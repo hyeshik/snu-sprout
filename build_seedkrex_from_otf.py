@@ -1,4 +1,6 @@
 import argparse
+import math
+import re
 import subprocess
 import tempfile
 import urllib.request
@@ -8,10 +10,13 @@ from pathlib import Path
 
 import pathops
 from extractor import extractUFO
+from fontTools.pens.recordingPen import DecomposingRecordingPen
 from fontTools.pens.boundsPen import BoundsPen
 from fontTools.pens.qu2cuPen import Qu2CuPen
 from fontTools.pens.recordingPen import RecordingPen
+from fontTools.pens.transformPen import TransformPen
 from fontTools.ttLib import TTFont
+from fontTools.unicodedata import script, script_extension
 from ufo2ft import compileOTF
 from ufoLib2 import Font
 
@@ -44,6 +49,18 @@ NAME_IDS = {
     17: None,
 }
 NAME_PLATFORMS = [(3, 1, 0x0409), (1, 0, 0)]
+ITALIC_ANGLE = 10.0
+ITALIC_STYLE_SUFFIX = "Italic"
+UPRIGHT_CJK_SCRIPTS = {"Bopo", "Hang", "Hani", "Hira", "Kana"}
+FS_SELECTION_ITALIC = 1 << 0
+FS_SELECTION_BOLD = 1 << 5
+FS_SELECTION_REGULAR = 1 << 6
+FS_SELECTION_OBLIQUE = 1 << 9
+MAC_STYLE_BOLD = 1 << 0
+MAC_STYLE_ITALIC = 1 << 1
+UNICODE_NAME_RE = re.compile(
+    r"^(?:uni(?P<uni>(?:[0-9A-Fa-f]{4})+)|u(?P<u>[0-9A-Fa-f]{4,6}))$"
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -54,6 +71,17 @@ def build_parser() -> argparse.ArgumentParser:
         "styles",
         nargs="*",
         help="Optional subset of styles to build: ExtraLight Thin Light Regular Medium Bold ExtraBold",
+    )
+    italic_group = parser.add_mutually_exclusive_group()
+    italic_group.add_argument(
+        "--upright-only",
+        action="store_true",
+        help="Build only the upright styles",
+    )
+    italic_group.add_argument(
+        "--italic-only",
+        action="store_true",
+        help="Build only the italic styles",
     )
     parser.add_argument(
         "--source-dir",
@@ -235,9 +263,20 @@ def extract_ufo_masters(source_paths: dict[str, Path], work_dir: Path) -> dict[s
     return extracted
 
 
-def rewrite_names(font: TTFont, style: str, weight: int) -> None:
+def final_style_name(base_style: str, italic: bool) -> str:
+    if not italic:
+        return base_style
+    return f"{base_style} {ITALIC_STYLE_SUFFIX}"
+
+
+def postscript_style_name(base_style: str, italic: bool) -> str:
+    return final_style_name(base_style, italic).replace(" ", "")
+
+
+def rewrite_names(font: TTFont, base_style: str, weight: int, italic: bool) -> None:
+    style = final_style_name(base_style, italic)
     full_name = f"{FAMILY_NAME} {style}"
-    ps_name = f"{FAMILY_NAME}-{style}"
+    ps_name = f"{FAMILY_NAME}-{postscript_style_name(base_style, italic)}"
     unique_id = f"1.000;DERV;{ps_name};{date.today().strftime('%Y%m%d')}"
     values = NAME_IDS | {
         2: style,
@@ -253,15 +292,130 @@ def rewrite_names(font: TTFont, style: str, weight: int) -> None:
             font["name"].setName(value, name_id, platform_id, plat_enc_id, lang_id)
 
     font["OS/2"].usWeightClass = weight
+    os2 = font["OS/2"]
+    os2.fsSelection &= ~(
+        FS_SELECTION_ITALIC | FS_SELECTION_BOLD | FS_SELECTION_REGULAR | FS_SELECTION_OBLIQUE
+    )
+    if italic:
+        os2.fsSelection |= FS_SELECTION_ITALIC
+    elif weight == 400:
+        os2.fsSelection |= FS_SELECTION_REGULAR
+    if weight >= 700:
+        os2.fsSelection |= FS_SELECTION_BOLD
+
+    font["head"].macStyle &= ~(MAC_STYLE_BOLD | MAC_STYLE_ITALIC)
+    if weight >= 700:
+        font["head"].macStyle |= MAC_STYLE_BOLD
+    if italic:
+        font["head"].macStyle |= MAC_STYLE_ITALIC
+
+    slant_rise = 1000
+    font["post"].italicAngle = -ITALIC_ANGLE if italic else 0
+    font["hhea"].caretSlopeRise = slant_rise
+    font["hhea"].caretSlopeRun = (
+        round(math.tan(math.radians(ITALIC_ANGLE)) * slant_rise) if italic else 0
+    )
+    font["hhea"].caretOffset = 0
+
     cff = font["CFF "].cff
     cff.fontNames = [ps_name]
     top_dict = cff.topDictIndex[0]
     top_dict.FamilyName = FAMILY_NAME
     top_dict.FullName = full_name
-    top_dict.Weight = style
+    top_dict.Weight = base_style
     top_dict.Notice = (
         "SeedKRex is a derivative of LINE Seed Sans KR and does not use the reserved name."
     )
+
+
+def glyph_name_codepoints(glyph_name: str) -> tuple[int, ...]:
+    stem = glyph_name.split(".", 1)[0]
+    match = UNICODE_NAME_RE.match(stem)
+    if not match:
+        return ()
+    if match.group("uni"):
+        text = match.group("uni")
+        return tuple(int(text[index : index + 4], 16) for index in range(0, len(text), 4))
+    return (int(match.group("u"), 16),)
+
+
+def is_upright_cjk_codepoint(codepoint: int) -> bool:
+    character = chr(codepoint)
+    if script(character) in UPRIGHT_CJK_SCRIPTS:
+        return True
+    extensions = script_extension(character)
+    return bool(extensions) and extensions <= UPRIGHT_CJK_SCRIPTS
+
+
+def glyph_should_keep_upright(
+    font: Font, glyph_name: str, memo: dict[str, bool], active: set[str]
+) -> bool:
+    if glyph_name in memo:
+        return memo[glyph_name]
+    if glyph_name in active:
+        return False
+
+    active.add(glyph_name)
+    glyph = font[glyph_name]
+    codepoints = tuple(glyph.unicodes) or glyph_name_codepoints(glyph_name)
+    if codepoints:
+        keep_upright = all(is_upright_cjk_codepoint(codepoint) for codepoint in codepoints)
+    elif glyph.components and not glyph.contours:
+        keep_upright = all(
+            glyph_should_keep_upright(font, component.baseGlyph, memo, active)
+            for component in glyph.components
+        )
+    else:
+        keep_upright = False
+    active.remove(glyph_name)
+    memo[glyph_name] = keep_upright
+    return keep_upright
+
+
+def slant_glyph(font: Font, glyph_name: str, slope: float) -> None:
+    glyph = font[glyph_name]
+    if glyph.contours or glyph.components:
+        recording = DecomposingRecordingPen(font)
+        glyph.draw(recording)
+        transformed = RecordingPen()
+        transform = (1, 0, slope, 1, 0, 0)
+        recording.replay(TransformPen(transformed, transform))
+        glyph.clearContours()
+        glyph.clearComponents()
+        normalize_recording(transformed).replay(glyph.getPen())
+
+    for anchor in glyph.anchors:
+        anchor.x += slope * anchor.y
+
+
+def italicize_font(font: Font) -> tuple[int, int]:
+    memo: dict[str, bool] = {}
+    active: set[str] = set()
+    slope = math.tan(math.radians(ITALIC_ANGLE))
+    slanted = 0
+    upright = 0
+
+    for glyph_name in font.keys():
+        if glyph_should_keep_upright(font, glyph_name, memo, active):
+            upright += 1
+            continue
+        slant_glyph(font, glyph_name, slope)
+        slanted += 1
+
+    return slanted, upright
+
+
+def build_targets(
+    selected_styles: set[str], build_upright: bool, build_italic: bool
+) -> list[tuple[str, int, str, int, bool]]:
+    variants = [item for item in VARIANTS if not selected_styles or item[0] in selected_styles]
+    targets: list[tuple[str, int, str, int, bool]] = []
+    for base_style, weight, source_label, offset_steps in variants:
+        if build_upright:
+            targets.append((base_style, weight, source_label, offset_steps, False))
+        if build_italic:
+            targets.append((base_style, weight, source_label, offset_steps, True))
+    return targets
 
 
 def offset_glyphs(font: Font, offset_width: int) -> tuple[int, int]:
@@ -311,15 +465,17 @@ def offset_glyphs(font: Font, offset_width: int) -> tuple[int, int]:
 
 
 def build_variant(
-    style: str,
+    base_style: str,
     weight: int,
     source_ufo: Path,
     offset_steps: int,
     step_width: int,
     output_dir: Path,
+    italic: bool,
 ) -> Path:
     font = Font.open(source_ufo)
     applied_width = offset_steps * step_width
+    style = final_style_name(base_style, italic)
     if applied_width:
         changed, skipped = offset_glyphs(font, applied_width)
         print(
@@ -328,9 +484,15 @@ def build_variant(
     else:
         print(f"{style}: using source master without outline offset")
 
+    if italic:
+        slanted, upright = italicize_font(font)
+        print(
+            f"{style}: slanted {slanted} glyphs and kept {upright} glyphs upright for CJK coverage"
+        )
+
     otf = compileOTF(font)
-    rewrite_names(otf, style, weight)
-    output_path = output_dir / f"{FAMILY_NAME}-{style}.otf"
+    rewrite_names(otf, base_style, weight, italic)
+    output_path = output_dir / f"{FAMILY_NAME}-{postscript_style_name(base_style, italic)}.otf"
     otf.save(output_path)
     print(f"Saved {output_path}")
     return output_path
@@ -352,8 +514,10 @@ def main() -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     selected = set(args.styles)
-    variants = [item for item in VARIANTS if not selected or item[0] in selected]
-    if not variants:
+    build_upright = not args.italic_only
+    build_italic = not args.upright_only
+    targets = build_targets(selected, build_upright, build_italic)
+    if not targets:
         raise SystemExit("No matching styles requested.")
 
     source_paths = ensure_sources(
@@ -373,15 +537,16 @@ def main() -> None:
     try:
         ufo_paths = extract_ufo_masters(source_paths, work_dir)
         built_paths: list[Path] = []
-        for style, weight, source_label, offset_steps in variants:
+        for base_style, weight, source_label, offset_steps, italic in targets:
             built_paths.append(
                 build_variant(
-                    style,
+                    base_style,
                     weight,
                     ufo_paths[source_label],
                     offset_steps,
                     step_width,
                     output_dir,
+                    italic,
                 )
             )
         if not args.no_hint:

@@ -30,6 +30,7 @@ Expected behavior:
 
 - `Thin`, `Regular`, `Bold`: direct builds from the corresponding source masters
 - `ExtraLight`, `Light`, `Medium`, `ExtraBold`: synthetic weights derived by offsetting outlines from the nearest master
+- each built weight also produces an italic companion by slanting non-CJK glyphs while keeping Han, Hangul, Hiragana, Katakana, and Bopomofo glyphs upright
 
 Do not replace this with a designspace interpolation workflow unless you first verify master compatibility across the full glyph set.
 
@@ -58,6 +59,7 @@ If you change the workflow:
 - preserve the `SeedKRex` renaming step
 - preserve the ability to use a temporary work directory
 - preserve the ability to skip hinting with `--no-hint`
+- preserve the upright-CJK behavior in the synthetic italic outputs unless intentionally redesigning that model
 
 If you add helper scripts, they should stay optional. The repository should still be usable with only the standalone builder plus documentation.
 
@@ -79,5 +81,6 @@ Keep `README.md` aligned with the actual implemented workflow, especially:
 - automatic source download behavior
 - output directory behavior
 - the synthetic-weight caveat
+- the synthetic-italic caveat
 
 If the build behavior changes, update `README.md` and `AGENTS.md` in the same change.

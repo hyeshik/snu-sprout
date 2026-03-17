@@ -6,6 +6,7 @@ __pycache__/
 original/
 master_ufo/
 instance_otf/
+dist/
 test-build/
 
 proof.html

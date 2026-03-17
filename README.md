@@ -13,12 +13,19 @@ The repository does not include the original source fonts in Git, but the build 
 The build script writes these final OTF files:
 
 - `SeedKRex-ExtraLight.otf`
+- `SeedKRex-ExtraLightItalic.otf`
 - `SeedKRex-Thin.otf`
+- `SeedKRex-ThinItalic.otf`
 - `SeedKRex-Light.otf`
+- `SeedKRex-LightItalic.otf`
 - `SeedKRex-Regular.otf`
+- `SeedKRex-RegularItalic.otf`
 - `SeedKRex-Medium.otf`
+- `SeedKRex-MediumItalic.otf`
 - `SeedKRex-Bold.otf`
+- `SeedKRex-BoldItalic.otf`
 - `SeedKRex-ExtraBold.otf`
+- `SeedKRex-ExtraBoldItalic.otf`
 
 ## Important Note
 
@@ -28,6 +35,7 @@ Instead:
 
 - `Thin`, `Regular`, and `Bold` are built directly from their corresponding source masters.
 - `ExtraLight`, `Light`, `Medium`, and `ExtraBold` are synthesized by applying outline offset operations to the nearest master.
+- Italic companions are synthesized from each built weight by slanting non-CJK glyphs while keeping Han, Hangul, Hiragana, Katakana, and Bopomofo glyphs upright.
 
 This is the implemented workflow in `build_seedkrex_from_otf.py`.
 
@@ -77,6 +85,7 @@ By default it:
 - reads source fonts from `original/`
 - auto-downloads the upstream ZIP if the source OTFs are missing
 - writes final OTFs to `instance_otf/`
+- writes both upright and italic variants for each selected weight
 - creates a temporary working directory for extracted UFOs
 - runs `psautohint --no-zones-stems` on the generated OTFs
 
@@ -92,6 +101,18 @@ Build only selected styles:
 
 ```bash
 python3 build_seedkrex_from_otf.py Light Medium ExtraBold
+```
+
+Build only the italic outputs for selected weights:
+
+```bash
+python3 build_seedkrex_from_otf.py Regular Bold --italic-only
+```
+
+Build only the upright outputs:
+
+```bash
+python3 build_seedkrex_from_otf.py --upright-only
 ```
 
 Skip hinting:
@@ -125,12 +146,36 @@ Use a fixed working directory:
 python3 build_seedkrex_from_otf.py --work-dir build-work --keep-work
 ```
 
+## Distribution ZIP
+
+Create a release ZIP from the built OTFs in `instance_otf/`:
+
+```bash
+python3 make_distribution_zip.py
+```
+
+By default this writes `dist/SeedKRex-otf-YYYYMMDD.zip`.
+
+Include `README.md` in the archive:
+
+```bash
+python3 make_distribution_zip.py --include-readme
+```
+
+Write a custom ZIP name:
+
+```bash
+python3 make_distribution_zip.py --zip-name SeedKRex-OTF.zip
+```
+
 ## Repository Layout
 
 - `build_seedkrex_from_otf.py`: standalone end-to-end builder
+- `make_distribution_zip.py`: optional helper to package built OTFs into a release ZIP
 - `.gitignore`: excludes source fonts and generated/intermediate artifacts
 - `original/`: expected location of upstream source fonts, not tracked
 - `instance_otf/`: generated final fonts, not tracked
+- `dist/`: generated distribution ZIPs, not tracked
 - `master_ufo/`: extracted intermediate UFOs, not tracked
 
 ## Reproducibility Notes
@@ -138,4 +183,5 @@ python3 build_seedkrex_from_otf.py --work-dir build-work --keep-work
 - The builder rewrites family/style naming to use `SeedKRex` instead of the reserved upstream family name.
 - Temporary UFO extraction is done at build time, so the committed repository does not need to store generated UFOs.
 - Missing source OTFs are fetched automatically from the upstream LINE Seed KR ZIP unless `--no-download` is used.
+- Italic outputs are synthetic obliques: non-CJK glyphs are slanted by the builder, while glyphs classified as Han, Hangul, Hiragana, Katakana, or Bopomofo remain upright.
 - `psautohint` may emit geometry warnings on synthesized extreme weights. Those do not necessarily mean the build failed, but visual inspection is still recommended for `ExtraLight` and `ExtraBold`.
