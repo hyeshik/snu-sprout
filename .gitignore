@@ -1,0 +1,12 @@
+.DS_Store
+._*
+__pycache__/
+.claude/
+
+original/
+master_ufo/
+instance_otf/
+test-build/
+
+proof.html
+LINESeedKR.designspace
