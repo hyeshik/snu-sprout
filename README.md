@@ -1,187 +1,162 @@
-# SeedKRex Build
+# SNU Sprout Sans
 
-This repository contains a reproducible build for generating the `SeedKRex` OTF family from three upstream `LINESeedKR` source OTFs:
+SNU Sprout Sans is a LINE Seed Sans KR-derived OpenType build. The build script
+downloads the LINE Seed Sans KR source package when needed, loads the three
+upstream OTF masters with FontForge, synthesizes intermediate weights, and
+generates upright and italic OTF instances.
 
-- `LINESeedKR-Th.otf`
-- `LINESeedKR-Rg.otf`
-- `LINESeedKR-Bd.otf`
-
-The repository does not include the original source fonts in Git, but the build script can download them automatically from LINE's ZIP distribution if they are missing.
-
-## What This Builds
-
-The build script writes these final OTF files:
-
-- `SeedKRex-ExtraLight.otf`
-- `SeedKRex-ExtraLightItalic.otf`
-- `SeedKRex-Thin.otf`
-- `SeedKRex-ThinItalic.otf`
-- `SeedKRex-Light.otf`
-- `SeedKRex-LightItalic.otf`
-- `SeedKRex-Regular.otf`
-- `SeedKRex-RegularItalic.otf`
-- `SeedKRex-Medium.otf`
-- `SeedKRex-MediumItalic.otf`
-- `SeedKRex-Bold.otf`
-- `SeedKRex-BoldItalic.otf`
-- `SeedKRex-ExtraBold.otf`
-- `SeedKRex-ExtraBoldItalic.otf`
-
-## Important Note
-
-The three source masters are not broadly interpolation-compatible, so this repository does not use a true designspace interpolation pipeline for the intermediate weights.
-
-Instead:
-
-- `Thin`, `Regular`, and `Bold` are built directly from their corresponding source masters.
-- `ExtraLight`, `Light`, `Medium`, and `ExtraBold` are synthesized by applying outline offset operations to the nearest master.
-- Italic companions are synthesized from each built weight by slanting non-CJK glyphs while keeping Han, Hangul, Hiragana, Katakana, and Bopomofo glyphs upright.
-
-This is the implemented workflow in `build_seedkrex_from_otf.py`.
+The italic styles keep CJK glyphs upright and apply a synthetic 10 degree slant
+to non-CJK glyphs. Intermediate weights are synthesized from the nearest source
+master using a FontForge outline weight step derived from the source master
+widths.
 
 ## Requirements
 
-Use Python 3 with these packages installed:
+- FontForge with Python scripting support
+- Python 3.10 or newer
+- `make` for the convenience commands
+- `zip` for package creation
 
-```bash
-pip install fonttools ufoLib2 ufo2ft pathops extractor psautohint
+On macOS with Homebrew:
+
+```sh
+brew install fontforge
 ```
 
-If your environment needs the broader fonttools extras, install:
+On Ubuntu:
 
-```bash
-pip install "fonttools[ufo,lxml,pathops]"
+```sh
+sudo apt-get install fontforge make python3 unzip zip
 ```
 
-## Source Fonts
+## Quick Start
 
-By default the builder looks for these files in `original/`:
+Build the complete family:
+
+```sh
+make build
+```
+
+The first build downloads:
 
 ```text
-original/
-  LINESeedKR-Th.otf
-  LINESeedKR-Rg.otf
-  LINESeedKR-Bd.otf
+https://seed.line.me/src/images/fonts/LINE_Seed_Sans_KR.zip
 ```
 
-If any of them are missing, the builder automatically downloads:
+The downloaded archive is stored under `vendor/downloads/`, the source OTFs are
+written to `original/`, and the generated OTF files are written to
+`instance_otf/`.
 
-- `https://seed.line.me/src/images/fonts/LINE_Seed_Sans_KR.zip`
+Run the tests:
 
-and extracts the three required OTFs into `original/`.
-
-These files are intentionally ignored by Git.
-
-## Build
-
-Run the end-to-end builder:
-
-```bash
-python3 build_seedkrex_from_otf.py
+```sh
+make test
 ```
 
-By default it:
+Build a ZIP package containing the generated OTF files and `README.md`:
 
-- reads source fonts from `original/`
-- auto-downloads the upstream ZIP if the source OTFs are missing
-- writes final OTFs to `instance_otf/`
-- writes both upright and italic variants for each selected weight
-- creates a temporary working directory for extracted UFOs
-- runs `psautohint --no-zones-stems` on the generated OTFs
-
-## Useful Options
-
-Build into a custom output directory:
-
-```bash
-python3 build_seedkrex_from_otf.py --output-dir out
+```sh
+make package
 ```
 
-Build only selected styles:
+Remove generated fonts and downloaded source files:
 
-```bash
-python3 build_seedkrex_from_otf.py Light Medium ExtraBold
+```sh
+make clean
 ```
 
-Build only the italic outputs for selected weights:
+## Generated Styles
 
-```bash
-python3 build_seedkrex_from_otf.py Regular Bold --italic-only
+The default build creates upright and italic variants for these weights:
+
+- ExtraLight: LINE Seed Sans KR Thin minus one synthetic weight step
+- Thin: LINE Seed Sans KR Thin
+- Light: LINE Seed Sans KR Thin plus one synthetic weight step
+- Regular: LINE Seed Sans KR Regular
+- Medium: LINE Seed Sans KR Regular plus one synthetic weight step
+- Bold: LINE Seed Sans KR Bold
+- ExtraBold: LINE Seed Sans KR Bold plus one synthetic weight step
+
+This produces 14 OTF files in total.
+
+## Build Details
+
+Default build settings:
+
+- Italic slant angle for non-CJK glyphs: `10deg`
+- Synthetic weight reference glyph: `I`
+- Package name: `SNUSproutSans.zip`
+
+The script accepts optional style names and build flags:
+
+```sh
+fontforge -lang=py -script build_snu_sprout_sans.py Regular Bold
+fontforge -lang=py -script build_snu_sprout_sans.py --upright-only
+fontforge -lang=py -script build_snu_sprout_sans.py --italic-only
 ```
 
-Build only the upright outputs:
+Use an existing local source directory without downloading:
 
-```bash
-python3 build_seedkrex_from_otf.py --upright-only
+```sh
+fontforge -lang=py -script build_snu_sprout_sans.py \
+  --source-dir path/to/LINESeedKR/fonts \
+  --no-download
 ```
 
-Skip hinting:
+Override output and slant settings:
 
-```bash
-python3 build_seedkrex_from_otf.py --no-hint
+```sh
+fontforge -lang=py -script build_snu_sprout_sans.py \
+  --output-dir build/otf \
+  --italic-angle 10
 ```
 
-Disable automatic source download:
+The same options can be passed through `make` variables:
 
-```bash
-python3 build_seedkrex_from_otf.py --no-download
+```sh
+make package SOURCE_DIR=path/to/LINESeedKR/fonts BUILD_FLAGS=--no-download
 ```
 
-Use a different upstream ZIP URL:
+## GitHub Actions
 
-```bash
-python3 build_seedkrex_from_otf.py \
-  --source-zip-url https://example.com/LINE_Seed_Sans_KR.zip
+The repository includes a GitHub Actions workflow at
+`.github/workflows/build-package.yml`. It runs on pushes, pull requests, tag
+pushes matching `v*`, and manual dispatches. The workflow installs FontForge,
+runs the unit tests, builds all 14 OTF files, creates `dist/SNUSproutSans.zip`,
+verifies the package, and uploads it as a workflow artifact. When the workflow
+is triggered by a tag matching `v*`, it also publishes a GitHub Release and
+attaches `SNUSproutSans.zip` as a release asset.
+
+Create and push a release tag:
+
+```sh
+git tag v0.1.0
+git push origin v0.1.0
 ```
 
-Keep the temporary working files for inspection:
-
-```bash
-python3 build_seedkrex_from_otf.py --keep-work
-```
-
-Use a fixed working directory:
-
-```bash
-python3 build_seedkrex_from_otf.py --work-dir build-work --keep-work
-```
-
-## Distribution ZIP
-
-Create a release ZIP from the built OTFs in `instance_otf/`:
-
-```bash
-python3 make_distribution_zip.py
-```
-
-By default this writes `dist/SeedKRex-otf-YYYYMMDD.zip`.
-
-Include `README.md` in the archive:
-
-```bash
-python3 make_distribution_zip.py --include-readme
-```
-
-Write a custom ZIP name:
-
-```bash
-python3 make_distribution_zip.py --zip-name SeedKRex-OTF.zip
-```
+Reusing an existing release tag is intentionally treated as an error. Use a new
+version tag for each published package.
 
 ## Repository Layout
 
-- `build_seedkrex_from_otf.py`: standalone end-to-end builder
+- `.github/workflows/build-package.yml`: GitHub Actions package and release workflow
+- `build_snu_sprout_sans.py`: FontForge build script
 - `make_distribution_zip.py`: optional helper to package built OTFs into a release ZIP
-- `.gitignore`: excludes source fonts and generated/intermediate artifacts
+- `tests/`: unit tests for pure helper logic
+- `.gitignore`: excludes source fonts and generated artifacts
 - `original/`: expected location of upstream source fonts, not tracked
 - `instance_otf/`: generated final fonts, not tracked
 - `dist/`: generated distribution ZIPs, not tracked
-- `master_ufo/`: extracted intermediate UFOs, not tracked
+- `vendor/`: downloaded source ZIPs, not tracked
 
 ## Reproducibility Notes
 
-- The builder rewrites family/style naming to use `SeedKRex` instead of the reserved upstream family name.
-- Temporary UFO extraction is done at build time, so the committed repository does not need to store generated UFOs.
-- Missing source OTFs are fetched automatically from the upstream LINE Seed KR ZIP unless `--no-download` is used.
-- Italic outputs are synthetic obliques: non-CJK glyphs are slanted by the builder, while glyphs classified as Han, Hangul, Hiragana, Katakana, or Bopomofo remain upright.
-- `psautohint` may emit geometry warnings on synthesized extreme weights. Those do not necessarily mean the build failed, but visual inspection is still recommended for `ExtraLight` and `ExtraBold`.
+- The builder rewrites family/style naming to use `SNU Sprout Sans` instead of
+  the reserved upstream family name.
+- Missing source OTFs are fetched automatically from the upstream LINE Seed KR
+  ZIP unless `--no-download` is used.
+- Italic outputs are synthetic obliques: non-CJK glyphs are slanted by the
+  builder, while glyphs classified as Han, Hangul, Hiragana, Katakana, or
+  Bopomofo remain upright.
+- Synthetic outline weight is intentionally simple and reproducible; visual
+  inspection is still recommended for `ExtraLight` and `ExtraBold`.

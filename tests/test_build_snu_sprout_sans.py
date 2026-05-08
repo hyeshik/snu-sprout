@@ -1,0 +1,93 @@
+import importlib.util
+import pathlib
+import unittest
+
+
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+SCRIPT_PATH = ROOT / "build_snu_sprout_sans.py"
+
+
+def load_builder():
+    spec = importlib.util.spec_from_file_location("build_snu_sprout_sans", SCRIPT_PATH)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+class BuildSnuSproutSansTests(unittest.TestCase):
+    def test_family_names_and_source_defaults_match_project_contract(self):
+        builder = load_builder()
+
+        self.assertEqual(builder.FAMILY_NAME, "SNU Sprout Sans")
+        self.assertEqual(builder.POSTSCRIPT_FAMILY_NAME, "SNUSproutSans")
+        self.assertEqual(builder.FILE_FAMILY_NAME, "SNUSproutSans")
+        self.assertEqual(
+            builder.DEFAULT_SOURCE_ZIP_URL,
+            "https://seed.line.me/src/images/fonts/LINE_Seed_Sans_KR.zip",
+        )
+        self.assertEqual(builder.DEFAULT_OUTPUT_DIR, "instance_otf")
+
+    def test_style_matrix_keeps_current_sprout_weight_model(self):
+        builder = load_builder()
+        specs = {spec.style: spec for spec in builder.STYLE_SPECS}
+
+        self.assertEqual(
+            list(specs),
+            ["ExtraLight", "Thin", "Light", "Regular", "Medium", "Bold", "ExtraBold"],
+        )
+        self.assertEqual(specs["ExtraLight"].source_label, "Thin")
+        self.assertEqual(specs["ExtraLight"].synthetic_weight_steps, -1)
+        self.assertEqual(specs["Thin"].source_label, "Thin")
+        self.assertEqual(specs["Thin"].synthetic_weight_steps, 0)
+        self.assertEqual(specs["Light"].source_label, "Thin")
+        self.assertEqual(specs["Light"].synthetic_weight_steps, 1)
+        self.assertEqual(specs["Regular"].source_label, "Regular")
+        self.assertEqual(specs["Regular"].synthetic_weight_steps, 0)
+        self.assertEqual(specs["Medium"].source_label, "Regular")
+        self.assertEqual(specs["Medium"].synthetic_weight_steps, 1)
+        self.assertEqual(specs["Bold"].source_label, "Bold")
+        self.assertEqual(specs["Bold"].synthetic_weight_steps, 0)
+        self.assertEqual(specs["ExtraBold"].source_label, "Bold")
+        self.assertEqual(specs["ExtraBold"].synthetic_weight_steps, 1)
+
+    def test_output_naming_uses_spaced_family_and_safe_file_prefix(self):
+        builder = load_builder()
+
+        self.assertEqual(builder.style_name("Regular", False), "Regular")
+        self.assertEqual(builder.style_name("Regular", True), "Regular Italic")
+        self.assertEqual(builder.postscript_style_name("ExtraLight", True), "ExtraLightItalic")
+        self.assertEqual(
+            builder.output_filename("ExtraLight", True),
+            "SNUSproutSans-ExtraLightItalic.otf",
+        )
+
+    def test_parser_maps_source_zip_url_and_build_modes(self):
+        builder = load_builder()
+
+        args = builder.build_parser().parse_args([])
+        self.assertEqual(args.source_zip_url, builder.DEFAULT_SOURCE_ZIP_URL)
+        self.assertFalse(args.upright_only)
+        self.assertFalse(args.italic_only)
+
+        args = builder.build_parser().parse_args(
+            ["--source-zip-url", "https://example.test/LINE_Seed_Sans_KR.zip"]
+        )
+        self.assertEqual(
+            args.source_zip_url,
+            "https://example.test/LINE_Seed_Sans_KR.zip",
+        )
+
+    def test_italic_slants_non_cjk_and_keeps_cjk_upright(self):
+        builder = load_builder()
+
+        self.assertTrue(builder.should_slant_codepoint(ord("A")))
+        self.assertTrue(builder.should_slant_codepoint(0x03A9))
+        self.assertFalse(builder.should_slant_codepoint(0xAC00))
+        self.assertFalse(builder.should_slant_codepoint(0x4E00))
+        self.assertFalse(builder.should_slant_codepoint(0x3042))
+        self.assertFalse(builder.should_slant_codepoint(0x30A2))
+        self.assertAlmostEqual(builder.italic_slope(), 0.1763269807)
+
+
+if __name__ == "__main__":
+    unittest.main()

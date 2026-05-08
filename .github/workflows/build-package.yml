@@ -1,0 +1,73 @@
+name: Build Package
+
+on:
+  push:
+    branches:
+      - "**"
+    tags:
+      - "v*"
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Build OTF package
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fontforge make python3 unzip zip
+
+      - name: Run unit tests
+        run: make test
+
+      - name: Build package
+        run: make package
+
+      - name: Verify package
+        run: |
+          test "$(find instance_otf -maxdepth 1 -name 'SNUSproutSans-*.otf' | wc -l)" -eq 14
+          test -f dist/SNUSproutSans.zip
+          unzip -l dist/SNUSproutSans.zip
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SNUSproutSans-${{ github.sha }}
+          path: dist/SNUSproutSans.zip
+          if-no-files-found: error
+          retention-days: 30
+
+  release:
+    name: Publish GitHub release
+    needs: package
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: write
+
+    steps:
+      - name: Download package artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: SNUSproutSans-${{ github.sha }}
+          path: dist
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            dist/SNUSproutSans.zip \
+            --title "SNU Sprout Sans ${GITHUB_REF_NAME}" \
+            --generate-notes \
+            --verify-tag

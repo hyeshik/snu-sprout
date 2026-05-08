@@ -4,9 +4,9 @@ __pycache__/
 .claude/
 
 original/
-master_ufo/
 instance_otf/
 dist/
+vendor/
 test-build/
 
 proof.html
