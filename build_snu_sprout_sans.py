@@ -38,7 +38,6 @@ class StyleSpec(NamedTuple):
 
 
 STYLE_SPECS = (
-    StyleSpec("ExtraLight", 200, "Thin", -1),
     StyleSpec("Thin", 250, "Thin"),
     StyleSpec("Light", 300, "Thin", 1),
     StyleSpec("Regular", 400, "Regular"),
@@ -115,10 +114,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "styles",
         nargs="*",
-        help=(
-            "Optional subset of styles: ExtraLight Thin Light Regular Medium "
-            "Bold ExtraBold"
-        ),
+        help="Optional subset of styles: Thin Light Regular Medium Bold ExtraBold",
     )
     italic_group = parser.add_mutually_exclusive_group()
     italic_group.add_argument(

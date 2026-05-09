@@ -69,7 +69,6 @@ make clean
 
 The default build creates upright and italic variants for these weights:
 
-- ExtraLight: LINE Seed Sans KR Thin minus one synthetic weight step
 - Thin: LINE Seed Sans KR Thin
 - Light: LINE Seed Sans KR Thin plus one synthetic weight step
 - Regular: LINE Seed Sans KR Regular
@@ -77,7 +76,7 @@ The default build creates upright and italic variants for these weights:
 - Bold: LINE Seed Sans KR Bold
 - ExtraBold: LINE Seed Sans KR Bold plus one synthetic weight step
 
-This produces 14 OTF files in total.
+This produces 12 OTF files in total.
 
 ## Build Details
 
@@ -122,7 +121,7 @@ make package SOURCE_DIR=path/to/LINESeedKR/fonts BUILD_FLAGS=--no-download
 The repository includes a GitHub Actions workflow at
 `.github/workflows/build-package.yml`. It runs on pushes, pull requests, tag
 pushes matching `v*`, and manual dispatches. The workflow installs FontForge,
-runs the unit tests, builds all 14 OTF files, creates `dist/SNUSproutSans.zip`,
+runs the unit tests, builds all 12 OTF files, creates `dist/SNUSproutSans.zip`,
 verifies the package, and uploads it as a workflow artifact. When the workflow
 is triggered by a tag matching `v*`, it also publishes a GitHub Release and
 attaches `SNUSproutSans.zip` as a release asset.
@@ -159,4 +158,6 @@ version tag for each published package.
   builder, while glyphs classified as Han, Hangul, Hiragana, Katakana, or
   Bopomofo remain upright.
 - Synthetic outline weight is intentionally simple and reproducible; visual
-  inspection is still recommended for `ExtraLight` and `ExtraBold`.
+  inspection is still recommended for `Light`, `Medium`, and `ExtraBold`.
+- ExtraLight is intentionally omitted because FontForge negative outline
+  thinning damaged Latin capital counters and lower curves.

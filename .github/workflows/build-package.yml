@@ -34,7 +34,7 @@ jobs:
 
       - name: Verify package
         run: |
-          test "$(find instance_otf -maxdepth 1 -name 'SNUSproutSans-*.otf' | wc -l)" -eq 14
+          test "$(find instance_otf -maxdepth 1 -name 'SNUSproutSans-*.otf' | wc -l)" -eq 12
           test -f dist/SNUSproutSans.zip
           unzip -l dist/SNUSproutSans.zip
 

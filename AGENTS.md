@@ -29,7 +29,8 @@ The repository does not rely on a true variable-font interpolation build because
 Expected behavior:
 
 - `Thin`, `Regular`, `Bold`: direct builds from the corresponding source masters
-- `ExtraLight`, `Light`, `Medium`, `ExtraBold`: synthetic weights derived by offsetting outlines from the nearest master
+- `Light`, `Medium`, `ExtraBold`: synthetic weights derived by offsetting outlines from the nearest master
+- `ExtraLight`: intentionally not built because negative outline thinning damages Latin capitals
 - each built weight also produces an italic companion by slanting non-CJK glyphs while keeping Han, Hangul, Hiragana, Katakana, and Bopomofo glyphs upright
 
 Do not replace this with a designspace interpolation workflow unless you first verify master compatibility across the full glyph set.

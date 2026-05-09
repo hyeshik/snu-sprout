@@ -33,10 +33,8 @@ class BuildSnuSproutSansTests(unittest.TestCase):
 
         self.assertEqual(
             list(specs),
-            ["ExtraLight", "Thin", "Light", "Regular", "Medium", "Bold", "ExtraBold"],
+            ["Thin", "Light", "Regular", "Medium", "Bold", "ExtraBold"],
         )
-        self.assertEqual(specs["ExtraLight"].source_label, "Thin")
-        self.assertEqual(specs["ExtraLight"].synthetic_weight_steps, -1)
         self.assertEqual(specs["Thin"].source_label, "Thin")
         self.assertEqual(specs["Thin"].synthetic_weight_steps, 0)
         self.assertEqual(specs["Light"].source_label, "Thin")
@@ -50,15 +48,22 @@ class BuildSnuSproutSansTests(unittest.TestCase):
         self.assertEqual(specs["ExtraBold"].source_label, "Bold")
         self.assertEqual(specs["ExtraBold"].synthetic_weight_steps, 1)
 
+    def test_fontforge_weight_synthesis_never_uses_negative_steps(self):
+        builder = load_builder()
+
+        self.assertTrue(
+            all(spec.synthetic_weight_steps >= 0 for spec in builder.STYLE_SPECS)
+        )
+
     def test_output_naming_uses_spaced_family_and_safe_file_prefix(self):
         builder = load_builder()
 
         self.assertEqual(builder.style_name("Regular", False), "Regular")
         self.assertEqual(builder.style_name("Regular", True), "Regular Italic")
-        self.assertEqual(builder.postscript_style_name("ExtraLight", True), "ExtraLightItalic")
+        self.assertEqual(builder.postscript_style_name("Thin", True), "ThinItalic")
         self.assertEqual(
-            builder.output_filename("ExtraLight", True),
-            "SNUSproutSans-ExtraLightItalic.otf",
+            builder.output_filename("Thin", True),
+            "SNUSproutSans-ThinItalic.otf",
         )
 
     def test_parser_maps_source_zip_url_and_build_modes(self):

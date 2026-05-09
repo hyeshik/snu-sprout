@@ -11,6 +11,7 @@ PACKAGE_ZIP ?= dist/$(PACKAGE_NAME).zip
 .PHONY: build test package clean
 
 build:
+	rm -f "$(OUTPUT_DIR)"/SNUSproutSans-*.otf
 	$(FONTFORGE) -lang=py -script build_snu_sprout_sans.py \
 		--source-zip-url "$(SOURCE_ZIP_URL)" \
 		--download-dir "$(DOWNLOAD_DIR)" \
