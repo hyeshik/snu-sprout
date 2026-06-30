@@ -32,6 +32,7 @@ Expected behavior:
 - `Light`, `Medium`, `ExtraBold`: synthetic weights derived by offsetting outlines from the nearest master
 - `ExtraLight`: intentionally not built because negative outline thinning damages Latin capitals
 - each built weight also produces an italic companion by slanting non-CJK glyphs while keeping Han, Hangul, Hiragana, Katakana, and Bopomofo glyphs upright
+- after `cidFlatten`, every encoded glyph is renamed to a registry-neutral AGL name (`uniXXXX` / `uXXXXXX`); do not reintroduce the `Korea1.<cid>` names FontForge derives from the masters' (mislabeled) Adobe-Korea1 ROS, because macOS Core Text then resolves them through the standard Adobe-Korea1 CMap and shows wrong syllables
 
 Do not replace this with a designspace interpolation workflow unless you first verify master compatibility across the full glyph set.
 

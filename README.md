@@ -86,6 +86,18 @@ Default build settings:
 - Synthetic weight reference glyph: `I`
 - Package name: `SNUSproutSans.zip`
 
+### CID glyph-name neutralization
+
+The upstream masters are CID-keyed and declare the `(Adobe, Korea1, 2)` ROS,
+but they actually use an identity CID assignment (CID == GID) that does not
+follow the real Adobe-Korea1 glyph ordering. After `cidFlatten`, FontForge
+names glyphs `Korea1.<cid>`. macOS Core Text recognizes that registered ordering
+and resolves such glyphs through the *standard* Adobe-Korea1 (UniKS) CMap instead
+of the font `cmap`, so most syllables with a final consonant rendered as the
+wrong character (for example, 겧 displayed as 쨬). The build therefore renames
+every encoded glyph to a registry-neutral AGL name (`uniXXXX` / `uXXXXXX`) right
+after flattening, which makes every renderer honor the font `cmap`.
+
 The script accepts optional style names and build flags:
 
 ```sh

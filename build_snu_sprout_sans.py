@@ -14,7 +14,7 @@ from typing import Iterator, NamedTuple
 FAMILY_NAME = "SNU Sprout Sans"
 POSTSCRIPT_FAMILY_NAME = "SNUSproutSans"
 FILE_FAMILY_NAME = POSTSCRIPT_FAMILY_NAME
-VERSION = "001.000"
+VERSION = "001.001"
 DEFAULT_SOURCE_ZIP_URL = "https://seed.line.me/src/images/fonts/LINE_Seed_Sans_KR.zip"
 DEFAULT_DOWNLOAD_DIR = "vendor/downloads"
 DEFAULT_SOURCE_DIR = "original"
@@ -257,6 +257,41 @@ def flatten_cid_font(font, quiet: bool) -> bool:
     return True
 
 
+def agl_glyph_name(codepoint: int) -> str:
+    """Return the AGL-conformant (registry-neutral) name for a codepoint."""
+    if codepoint <= 0xFFFF:
+        return f"uni{codepoint:04X}"
+    return f"u{codepoint:04X}"
+
+
+def neutralize_cid_glyph_names(font, quiet: bool) -> int:
+    """Rename flattened glyphs to AGL Unicode names.
+
+    The upstream masters are CID-keyed with ROS ``(Adobe, Korea1, 2)`` but use
+    an identity CID assignment (CID == GID) that does *not* follow the real
+    Adobe-Korea1 glyph ordering. After ``cidFlatten`` FontForge names glyphs
+    ``Korea1.<cid>``; macOS Core Text recognises that registered ordering and
+    resolves those glyphs through the *standard* Adobe-Korea1 (UniKS) CMap
+    instead of the font ``cmap``. Because the masters' identity CIDs differ from
+    the standard Adobe-Korea1 CIDs for many syllables, the wrong glyph is shown
+    (e.g. 겧 renders as 쨬). Renaming encoded glyphs to registry-neutral AGL
+    names (``uniXXXX`` / ``uXXXXXX``) drops the Adobe ordering association, so
+    every renderer honours the font ``cmap``.
+    """
+    renamed = 0
+    with suppress_c_stderr(quiet):
+        for glyph in font.glyphs():
+            codepoint = glyph.unicode
+            if codepoint is None or codepoint < 0:
+                continue
+            new_name = agl_glyph_name(codepoint)
+            if glyph.glyphname == new_name:
+                continue
+            glyph.glyphname = new_name
+            renamed += 1
+    return renamed
+
+
 def glyph_outline_width(font, codepoint: int) -> float:
     for glyph in font.glyphs():
         if glyph.unicode == codepoint:
@@ -377,6 +412,7 @@ def build_variant(fontforge, args, masters: dict[str, Path], spec: StyleSpec, it
 
     try:
         flattened = flatten_cid_font(font, quiet)
+        renamed = neutralize_cid_glyph_names(font, quiet) if flattened else 0
         synthetic_offset_width = spec.synthetic_weight_steps * args.synthetic_weight_width
         synthetic_changed = apply_synthetic_weight(font, synthetic_offset_width, quiet)
         slanted, upright = slant_non_cjk_glyphs(font, args.italic_angle) if italic else (0, 0)
@@ -394,7 +430,8 @@ def build_variant(fontforge, args, masters: dict[str, Path], spec: StyleSpec, it
             f"synthetic_offset_width={synthetic_offset_width}, "
             f"unencoded_removed={removed_unencoded}, "
             f"italic_slanted={slanted}, italic_upright={upright}, "
-            f"cid_flattened={flattened}, validate=0x{validation_state:x}"
+            f"cid_flattened={flattened}, glyphs_renamed={renamed}, "
+            f"validate=0x{validation_state:x}"
         )
         return output_path
     finally:

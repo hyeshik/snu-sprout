@@ -82,6 +82,19 @@ class BuildSnuSproutSansTests(unittest.TestCase):
             "https://example.test/LINE_Seed_Sans_KR.zip",
         )
 
+    def test_cid_glyphs_get_registry_neutral_agl_names(self):
+        builder = load_builder()
+
+        # BMP codepoints use uniXXXX; supplementary use uXXXXXX. None of these
+        # carry the "Korea1." Adobe ordering prefix that makes macOS Core Text
+        # resolve glyphs through the standard Adobe-Korea1 CMap instead of the
+        # font cmap (which displayed wrong syllables, e.g. 겧 as 쨬).
+        self.assertEqual(builder.agl_glyph_name(0xAC00), "uniAC00")
+        self.assertEqual(builder.agl_glyph_name(0xACA7), "uniACA7")
+        self.assertEqual(builder.agl_glyph_name(ord("A")), "uni0041")
+        self.assertEqual(builder.agl_glyph_name(0x20000), "u20000")
+        self.assertFalse(builder.agl_glyph_name(0xACA7).startswith("Korea1"))
+
     def test_italic_slants_non_cjk_and_keeps_cjk_upright(self):
         builder = load_builder()
 
