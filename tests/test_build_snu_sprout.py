@@ -82,6 +82,20 @@ class BuildSnuSproutTests(unittest.TestCase):
             "https://example.test/LINE_Seed_Sans_KR.zip",
         )
 
+    def test_parser_exposes_italic_guard_controls(self):
+        builder = load_builder()
+
+        args = builder.build_parser().parse_args([])
+        self.assertEqual(args.guard_clearance, builder.DEFAULT_GUARD_CLEARANCE)
+        self.assertEqual(args.guard_bucket_size, builder.DEFAULT_GUARD_BUCKET_SIZE)
+        self.assertFalse(args.no_italic_guard)
+
+        args = builder.build_parser().parse_args(
+            ["--guard-clearance", "40", "--no-italic-guard"]
+        )
+        self.assertEqual(args.guard_clearance, 40)
+        self.assertTrue(args.no_italic_guard)
+
     def test_cid_glyphs_get_registry_neutral_agl_names(self):
         builder = load_builder()
 

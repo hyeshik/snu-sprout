@@ -6,13 +6,15 @@ upstream OTF masters with FontForge, synthesizes intermediate weights, and
 generates upright and italic OTF instances.
 
 The italic styles keep CJK glyphs upright and apply a synthetic 10 degree slant
-to non-CJK glyphs. Intermediate weights are synthesized from the nearest source
-master using a FontForge outline weight step derived from the source master
-widths.
+to non-CJK glyphs, then add a kerning guard so slanted glyphs cannot collide
+with the upright CJK glyph that follows. Intermediate weights are synthesized
+from the nearest source master using a FontForge outline weight step derived
+from the source master widths.
 
 ## Requirements
 
 - FontForge with Python scripting support
+- fontTools, importable from the interpreter FontForge embeds
 - Python 3.10 or newer
 - `make` for the convenience commands
 - `zip` for package creation
@@ -20,13 +22,22 @@ widths.
 On macOS with Homebrew:
 
 ```sh
-brew install fontforge
+brew install fontforge fonttools
 ```
 
 On Ubuntu:
 
 ```sh
-sudo apt-get install fontforge make python3 unzip zip
+sudo apt-get install fontforge python3-fonttools make python3 unzip zip
+```
+
+The builder calls fontTools while FontForge is driving the script, so fontTools
+must be installed for the Python that FontForge embeds rather than for whichever
+`python3` comes first on `PATH`. A virtualenv or Conda environment is usually
+*not* that interpreter. Check with:
+
+```sh
+fontforge -lang=py -c "import fontTools; print(fontTools.version)"
 ```
 
 ## Quick Start
@@ -84,6 +95,8 @@ Default build settings:
 
 - Italic slant angle for non-CJK glyphs: `10deg`
 - Synthetic weight reference glyph: `I`
+- Italic collision guard ink clearance: `30` units at UPM 1000
+- Italic collision guard geometry bucket: `5` units
 - Font version: `0.3.0`
 - Package name: `SNUSprout-0.3.0.zip`
 
@@ -102,6 +115,48 @@ of the font `cmap`, so most syllables with a final consonant rendered as the
 wrong character (for example, 겧 displayed as 쨬). The build therefore renames
 every encoded glyph to a registry-neutral AGL name (`uniXXXX` / `uXXXXXX`) right
 after flattening, which makes every renderer honor the font `cmap`.
+
+### Italic-to-CJK collision guard
+
+Slanting an outline does not change its advance width, so a sheared non-CJK
+glyph can lean past its own advance and overlap the upright CJK glyph that
+follows. In `f다` the italic `f` overhangs its advance by 160 units while `다`
+offers only 78 units of left side bearing, leaving an 82 unit overlap.
+
+Every italic build therefore appends a class-based GPOS pair positioning lookup
+to each `kern` feature. It buckets slanted glyphs by right overhang and upright
+CJK glyphs by left side bearing, then adds a positive `XAdvance` to the slanted
+glyph so the pair keeps at least the configured ink clearance. Both roundings
+are conservative, so the guard for a bucket is never smaller than what any
+member of that bucket needs.
+
+Properties worth knowing:
+
+- The guard is kerning, so it inserts no space glyph and creates no line-break
+  opportunity.
+- Pairs that already clear are left at their designed spacing; only colliding
+  pairs are widened. Latin-internal kerning is untouched.
+- Upright variants get no guard, because they have no synthetic overhang.
+- The slanted and upright sides are split with the same predicate the builder
+  uses to decide what to shear, so the two steps cannot drift apart.
+- Clearance is measured from glyph bounding boxes, not per-outline ink, so a few
+  pairs whose ink never overlaps vertically are widened as well.
+
+Applications that shape Latin and CJK as separate runs may still need an
+equivalent typesetting boundary rule, because the pair never reaches the shaper.
+
+Tune or disable the guard:
+
+```sh
+fontforge -lang=py -script build_snu_sprout.py --guard-clearance 40
+fontforge -lang=py -script build_snu_sprout.py --no-italic-guard
+```
+
+It can also be applied on its own to an already generated OTF:
+
+```sh
+python3 add_italic_cjk_guard.py in.otf out.otf --clearance 30
+```
 
 The script accepts optional style names and build flags:
 
@@ -158,6 +213,7 @@ version tag for each published package.
 
 - `.github/workflows/build-package.yml`: GitHub Actions package and release workflow
 - `build_snu_sprout.py`: FontForge build script
+- `add_italic_cjk_guard.py`: italic-to-upright-CJK collision guard, applied by the builder
 - `make_distribution_zip.py`: optional helper to package built OTFs into a release ZIP
 - `tests/`: unit tests for pure helper logic
 - `.gitignore`: excludes source fonts and generated artifacts
@@ -175,6 +231,8 @@ version tag for each published package.
 - Italic outputs are synthetic obliques: non-CJK glyphs are slanted by the
   builder, while glyphs classified as Han, Hangul, Hiragana, Katakana, or
   Bopomofo remain upright.
+- Italic outputs also carry a generated kerning guard that keeps slanted glyphs
+  from colliding with the following upright CJK glyph.
 - Synthetic outline weight is intentionally simple and reproducible; visual
   inspection is still recommended for `Light`, `Medium`, and `ExtraBold`.
 - ExtraLight is intentionally omitted because FontForge negative outline

@@ -20,6 +20,8 @@ DEFAULT_DOWNLOAD_DIR = "vendor/downloads"
 DEFAULT_SOURCE_DIR = "original"
 DEFAULT_OUTPUT_DIR = "instance_otf"
 DEFAULT_ITALIC_ANGLE = 10.0
+DEFAULT_GUARD_CLEARANCE = 30
+DEFAULT_GUARD_BUCKET_SIZE = 5
 SYNTHETIC_WEIGHT_REFERENCE_CODEPOINT = 0x49
 
 SOURCE_FILES = {
@@ -137,6 +139,26 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=DEFAULT_ITALIC_ANGLE,
         help="Synthetic slant angle for non-CJK glyphs in italic variants.",
+    )
+    parser.add_argument(
+        "--guard-clearance",
+        type=int,
+        default=DEFAULT_GUARD_CLEARANCE,
+        help=(
+            "Ink gap kept between a slanted glyph and the following upright "
+            "CJK glyph in italic variants."
+        ),
+    )
+    parser.add_argument(
+        "--guard-bucket-size",
+        type=int,
+        default=DEFAULT_GUARD_BUCKET_SIZE,
+        help="Geometry bucket size used to group guard kerning classes.",
+    )
+    parser.add_argument(
+        "--no-italic-guard",
+        action="store_true",
+        help="Skip the italic-to-upright-CJK collision guard.",
     )
     parser.add_argument(
         "--verbose-fontforge",
@@ -425,17 +447,34 @@ def build_variant(fontforge, args, masters: dict[str, Path], spec: StyleSpec, it
             validation_state = font.validate()
         with suppress_c_stderr(quiet):
             font.generate(str(output_path))
-        print(
-            f"{output_path}: synthetic_weighted={synthetic_changed}, "
-            f"synthetic_offset_width={synthetic_offset_width}, "
-            f"unencoded_removed={removed_unencoded}, "
-            f"italic_slanted={slanted}, italic_upright={upright}, "
-            f"cid_flattened={flattened}, glyphs_renamed={renamed}, "
-            f"validate=0x{validation_state:x}"
-        )
-        return output_path
     finally:
         font.close()
+
+    guard_summary = "none"
+    if italic and not args.no_italic_guard:
+        from add_italic_cjk_guard import guard_font_file
+
+        guard_stats = guard_font_file(
+            output_path,
+            output_path,
+            clearance=args.guard_clearance,
+            bucket_size=args.guard_bucket_size,
+        )
+        guard_summary = (
+            f"{guard_stats.guard_min}..{guard_stats.guard_max}"
+            f"/{guard_stats.guarded_pairs}pairs"
+        )
+
+    print(
+        f"{output_path}: synthetic_weighted={synthetic_changed}, "
+        f"synthetic_offset_width={synthetic_offset_width}, "
+        f"unencoded_removed={removed_unencoded}, "
+        f"italic_slanted={slanted}, italic_upright={upright}, "
+        f"cid_flattened={flattened}, glyphs_renamed={renamed}, "
+        f"italic_guard={guard_summary}, "
+        f"validate=0x{validation_state:x}"
+    )
+    return output_path
 
 
 def main() -> None:

@@ -13,7 +13,7 @@ PACKAGE_ZIP ?= dist/$(PACKAGE_NAME).zip
 .PHONY: build test package clean
 
 build:
-	rm -f "$(OUTPUT_DIR)"/SNUSprout-*.otf
+	rm -f "$(OUTPUT_DIR)"/SNUSprout-*.otf "$(OUTPUT_DIR)"/SNUSprout-*.otf.guard-tmp
 	$(FONTFORGE) -lang=py -script $(BUILD_SCRIPT) \
 		--source-zip-url "$(SOURCE_ZIP_URL)" \
 		--download-dir "$(DOWNLOAD_DIR)" \

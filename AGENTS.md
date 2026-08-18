@@ -8,7 +8,8 @@ The canonical workflow is the standalone script:
 
 - `build_snu_sprout.py`
 
-Treat that script as the source of truth for the build process.
+Treat that script as the source of truth for the build process. It calls one
+helper module, `add_italic_cjk_guard.py`, while FontForge is driving it.
 
 ## Source of Truth
 
@@ -19,6 +20,9 @@ Only these inputs are required for the final build:
 - `original/LINESeedKR-Bd.otf`
 
 If these files are missing, the canonical builder is allowed to download them from the configured upstream ZIP URL and place them in `original/`.
+
+fontTools must be importable from the interpreter FontForge embeds, which is
+usually the system Python rather than an active virtualenv or Conda environment.
 
 Do not commit the source fonts unless the user explicitly asks for that.
 
@@ -32,6 +36,7 @@ Expected behavior:
 - `Light`, `Medium`, `ExtraBold`: synthetic weights derived by offsetting outlines from the nearest master
 - `ExtraLight`: intentionally not built because negative outline thinning damages Latin capitals
 - each built weight also produces an italic companion by slanting non-CJK glyphs while keeping Han, Hangul, Hiragana, Katakana, and Bopomofo glyphs upright
+- every italic build then appends a class-based GPOS pair positioning lookup to each `kern` feature so a slanted glyph cannot collide with the following upright CJK glyph; the shear leaves advance widths alone, so without it `f다` overlaps by 82 units. Split the two sides with the builder's own `is_cjk_codepoint`, so the guard cannot drift away from the slanting rule, and keep the rounding conservative (overhangs up, side bearings down)
 - after `cidFlatten`, every encoded glyph is renamed to a registry-neutral AGL name (`uniXXXX` / `uXXXXXX`); do not reintroduce the `Korea1.<cid>` names FontForge derives from the masters' (mislabeled) Adobe-Korea1 ROS, because macOS Core Text then resolves them through the standard Adobe-Korea1 CMap and shows wrong syllables
 
 Do not replace this with a designspace interpolation workflow unless you first verify master compatibility across the full glyph set.
@@ -61,6 +66,7 @@ If you change the workflow:
 - keep automatic source download working unless intentionally removing that feature
 - preserve the `SNU Sprout` renaming step
 - preserve the upright-CJK behavior in the synthetic italic outputs unless intentionally redesigning that model
+- keep the italic collision guard as kerning only: it must not insert a space glyph, must not add a line-break opportunity, and must leave non-colliding pairs at their designed spacing
 
 If you add helper scripts, they should stay optional. The repository should still be usable with only the standalone builder plus documentation.
 
@@ -72,6 +78,10 @@ After changing the build logic, at minimum:
 2. Run `fontforge -lang=py -script build_snu_sprout.py Regular --upright-only`
 3. Confirm the output family/style names are `SNU Sprout`
 4. Confirm the expected `OS/2.usWeightClass` is written
+
+If italic layout changed, also build one italic and confirm with a real shaper
+that `f다` has a non-negative ink gap while a non-colliding pair such as `h다`
+keeps the spacing it had before.
 
 The `VERSION` constant in `build_snu_sprout.py` is the single source of truth for
 the font version. The `Makefile` and the CI workflow both derive the
