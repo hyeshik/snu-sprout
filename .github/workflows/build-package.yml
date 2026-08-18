@@ -26,6 +26,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y fontforge make python3 unzip zip
 
+      - name: Resolve package name
+        run: |
+          version="$(sed -n 's/^VERSION = "\(.*\)"$/\1/p' build_snu_sprout.py)"
+          test -n "$version"
+          echo "PACKAGE_ZIP=dist/SNUSprout-${version}.zip" >> "$GITHUB_ENV"
+
       - name: Run unit tests
         run: make test
 
@@ -34,15 +40,15 @@ jobs:
 
       - name: Verify package
         run: |
-          test "$(find instance_otf -maxdepth 1 -name 'SNUSproutSans-*.otf' | wc -l)" -eq 12
-          test -f dist/SNUSproutSans.zip
-          unzip -l dist/SNUSproutSans.zip
+          test "$(find instance_otf -maxdepth 1 -name 'SNUSprout-*.otf' | wc -l)" -eq 12
+          test -f "$PACKAGE_ZIP"
+          unzip -l "$PACKAGE_ZIP"
 
       - name: Upload package artifact
         uses: actions/upload-artifact@v4
         with:
-          name: SNUSproutSans-${{ github.sha }}
-          path: dist/SNUSproutSans.zip
+          name: SNUSprout-${{ github.sha }}
+          path: ${{ env.PACKAGE_ZIP }}
           if-no-files-found: error
           retention-days: 30
 
@@ -59,7 +65,7 @@ jobs:
       - name: Download package artifact
         uses: actions/download-artifact@v4
         with:
-          name: SNUSproutSans-${{ github.sha }}
+          name: SNUSprout-${{ github.sha }}
           path: dist
 
       - name: Publish release
@@ -67,7 +73,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "${GITHUB_REF_NAME}" \
-            dist/SNUSproutSans.zip \
-            --title "SNU Sprout Sans ${GITHUB_REF_NAME}" \
+            dist/SNUSprout-*.zip \
+            --title "SNU Sprout ${GITHUB_REF_NAME}" \
             --generate-notes \
             --verify-tag

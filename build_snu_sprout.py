@@ -11,10 +11,10 @@ from pathlib import Path
 from typing import Iterator, NamedTuple
 
 
-FAMILY_NAME = "SNU Sprout Sans"
-POSTSCRIPT_FAMILY_NAME = "SNUSproutSans"
+FAMILY_NAME = "SNU Sprout"
+POSTSCRIPT_FAMILY_NAME = "SNUSprout"
 FILE_FAMILY_NAME = POSTSCRIPT_FAMILY_NAME
-VERSION = "001.001"
+VERSION = "0.3.0"
 DEFAULT_SOURCE_ZIP_URL = "https://seed.line.me/src/images/fonts/LINE_Seed_Sans_KR.zip"
 DEFAULT_DOWNLOAD_DIR = "vendor/downloads"
 DEFAULT_SOURCE_DIR = "original"
@@ -109,7 +109,7 @@ def output_filename(style: str, italic: bool) -> str:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Build SNU Sprout Sans from LINE Seed Sans KR OTF masters."
+        description="Build SNU Sprout from LINE Seed Sans KR OTF masters."
     )
     parser.add_argument(
         "styles",
@@ -365,7 +365,7 @@ def rewrite_metadata(font, spec: StyleSpec, italic: bool, italic_angle: float) -
     font.weight = "Normal" if spec.style == "Regular" else spec.style
     font.version = VERSION
     font.copyright = (
-        "Copyright (c) LY Corporation. SNU Sprout Sans is a derivative build."
+        "Copyright (c) LY Corporation. SNU Sprout is a derivative build."
     )
     font.italicangle = italic_angle
     font.os2_weight = spec.weight
@@ -376,14 +376,14 @@ def rewrite_metadata(font, spec: StyleSpec, italic: bool, italic_angle: float) -
         font.os2_stylemap = 64
 
     notice = (
-        "SNU Sprout Sans is a derivative of LINE Seed Sans KR and does not use "
+        "SNU Sprout is a derivative of LINE Seed Sans KR and does not use "
         "the reserved upstream family name."
     )
     font.sfnt_names = (
         (
             "English (US)",
             "Copyright",
-            "Copyright (c) LY Corporation. SNU Sprout Sans is a derivative build.",
+            "Copyright (c) LY Corporation. SNU Sprout is a derivative build.",
         ),
         ("English (US)", "Family", FAMILY_NAME),
         ("English (US)", "SubFamily", output_style),
@@ -446,7 +446,7 @@ def main() -> None:
     except ModuleNotFoundError as exc:
         raise SystemExit(
             "Run this script with FontForge: "
-            "fontforge -lang=py -script build_snu_sprout_sans.py"
+            "fontforge -lang=py -script build_snu_sprout.py"
         ) from exc
 
     masters = ensure_source_fonts(args)

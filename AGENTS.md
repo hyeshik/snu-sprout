@@ -2,11 +2,11 @@
 
 ## Purpose
 
-This repository exists to produce final `SNU Sprout Sans` OTF files from three upstream `LINESeedKR` OTF masters that are supplied locally by the user.
+This repository exists to produce final `SNU Sprout` OTF files from three upstream `LINESeedKR` OTF masters that are supplied locally by the user.
 
 The canonical workflow is the standalone script:
 
-- `build_snu_sprout_sans.py`
+- `build_snu_sprout.py`
 
 Treat that script as the source of truth for the build process.
 
@@ -57,9 +57,9 @@ Do not add:
 
 If you change the workflow:
 
-- keep `build_snu_sprout_sans.py` runnable end-to-end from raw OTF inputs
+- keep `build_snu_sprout.py` runnable end-to-end from raw OTF inputs
 - keep automatic source download working unless intentionally removing that feature
-- preserve the `SNU Sprout Sans` renaming step
+- preserve the `SNU Sprout` renaming step
 - preserve the upright-CJK behavior in the synthetic italic outputs unless intentionally redesigning that model
 
 If you add helper scripts, they should stay optional. The repository should still be usable with only the standalone builder plus documentation.
@@ -69,9 +69,14 @@ If you add helper scripts, they should stay optional. The repository should stil
 After changing the build logic, at minimum:
 
 1. Run `python3 -m unittest discover -s tests`
-2. Run `fontforge -lang=py -script build_snu_sprout_sans.py Regular --upright-only`
-3. Confirm the output family/style names are `SNU Sprout Sans`
+2. Run `fontforge -lang=py -script build_snu_sprout.py Regular --upright-only`
+3. Confirm the output family/style names are `SNU Sprout`
 4. Confirm the expected `OS/2.usWeightClass` is written
+
+The `VERSION` constant in `build_snu_sprout.py` is the single source of truth for
+the font version. The `Makefile` and the CI workflow both derive the
+distribution ZIP name (`SNUSprout-<version>.zip`) from it, so bump only that
+constant when releasing.
 
 ## Documentation Expectations
 

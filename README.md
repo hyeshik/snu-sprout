@@ -1,6 +1,6 @@
-# SNU Sprout Sans
+# SNU Sprout
 
-SNU Sprout Sans is a LINE Seed Sans KR-derived OpenType build. The build script
+SNU Sprout is a LINE Seed Sans KR-derived OpenType build. The build script
 downloads the LINE Seed Sans KR source package when needed, loads the three
 upstream OTF masters with FontForge, synthesizes intermediate weights, and
 generates upright and italic OTF instances.
@@ -84,7 +84,12 @@ Default build settings:
 
 - Italic slant angle for non-CJK glyphs: `10deg`
 - Synthetic weight reference glyph: `I`
-- Package name: `SNUSproutSans.zip`
+- Font version: `0.3.0`
+- Package name: `SNUSprout-0.3.0.zip`
+
+The package name is derived from the `VERSION` constant in
+`build_snu_sprout.py`, which is the single source of truth for the font version.
+Bump that constant to change both the font metadata and the ZIP name.
 
 ### CID glyph-name neutralization
 
@@ -101,15 +106,15 @@ after flattening, which makes every renderer honor the font `cmap`.
 The script accepts optional style names and build flags:
 
 ```sh
-fontforge -lang=py -script build_snu_sprout_sans.py Regular Bold
-fontforge -lang=py -script build_snu_sprout_sans.py --upright-only
-fontforge -lang=py -script build_snu_sprout_sans.py --italic-only
+fontforge -lang=py -script build_snu_sprout.py Regular Bold
+fontforge -lang=py -script build_snu_sprout.py --upright-only
+fontforge -lang=py -script build_snu_sprout.py --italic-only
 ```
 
 Use an existing local source directory without downloading:
 
 ```sh
-fontforge -lang=py -script build_snu_sprout_sans.py \
+fontforge -lang=py -script build_snu_sprout.py \
   --source-dir path/to/LINESeedKR/fonts \
   --no-download
 ```
@@ -117,7 +122,7 @@ fontforge -lang=py -script build_snu_sprout_sans.py \
 Override output and slant settings:
 
 ```sh
-fontforge -lang=py -script build_snu_sprout_sans.py \
+fontforge -lang=py -script build_snu_sprout.py \
   --output-dir build/otf \
   --italic-angle 10
 ```
@@ -133,10 +138,11 @@ make package SOURCE_DIR=path/to/LINESeedKR/fonts BUILD_FLAGS=--no-download
 The repository includes a GitHub Actions workflow at
 `.github/workflows/build-package.yml`. It runs on pushes, pull requests, tag
 pushes matching `v*`, and manual dispatches. The workflow installs FontForge,
-runs the unit tests, builds all 12 OTF files, creates `dist/SNUSproutSans.zip`,
-verifies the package, and uploads it as a workflow artifact. When the workflow
-is triggered by a tag matching `v*`, it also publishes a GitHub Release and
-attaches `SNUSproutSans.zip` as a release asset.
+runs the unit tests, builds all 12 OTF files, creates
+`dist/SNUSprout-<version>.zip`, verifies the package, and uploads it as a
+workflow artifact. When the workflow is triggered by a tag matching `v*`, it
+also publishes a GitHub Release and attaches the versioned ZIP as a release
+asset.
 
 Create and push a release tag:
 
@@ -151,7 +157,7 @@ version tag for each published package.
 ## Repository Layout
 
 - `.github/workflows/build-package.yml`: GitHub Actions package and release workflow
-- `build_snu_sprout_sans.py`: FontForge build script
+- `build_snu_sprout.py`: FontForge build script
 - `make_distribution_zip.py`: optional helper to package built OTFs into a release ZIP
 - `tests/`: unit tests for pure helper logic
 - `.gitignore`: excludes source fonts and generated artifacts
@@ -162,7 +168,7 @@ version tag for each published package.
 
 ## Reproducibility Notes
 
-- The builder rewrites family/style naming to use `SNU Sprout Sans` instead of
+- The builder rewrites family/style naming to use `SNU Sprout` instead of
   the reserved upstream family name.
 - Missing source OTFs are fetched automatically from the upstream LINE Seed KR
   ZIP unless `--no-download` is used.

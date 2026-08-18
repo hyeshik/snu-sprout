@@ -5,14 +5,16 @@ DOWNLOAD_DIR ?= vendor/downloads
 SOURCE_DIR ?= original
 OUTPUT_DIR ?= instance_otf
 BUILD_FLAGS ?=
-PACKAGE_NAME ?= SNUSproutSans
+BUILD_SCRIPT ?= build_snu_sprout.py
+VERSION ?= $(shell sed -n 's/^VERSION = "\(.*\)"$$/\1/p' $(BUILD_SCRIPT))
+PACKAGE_NAME ?= SNUSprout-$(VERSION)
 PACKAGE_ZIP ?= dist/$(PACKAGE_NAME).zip
 
 .PHONY: build test package clean
 
 build:
-	rm -f "$(OUTPUT_DIR)"/SNUSproutSans-*.otf
-	$(FONTFORGE) -lang=py -script build_snu_sprout_sans.py \
+	rm -f "$(OUTPUT_DIR)"/SNUSprout-*.otf
+	$(FONTFORGE) -lang=py -script $(BUILD_SCRIPT) \
 		--source-zip-url "$(SOURCE_ZIP_URL)" \
 		--download-dir "$(DOWNLOAD_DIR)" \
 		--source-dir "$(SOURCE_DIR)" \

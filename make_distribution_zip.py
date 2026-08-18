@@ -4,17 +4,17 @@ from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
 
 
-DEFAULT_FAMILY = "SNUSproutSans"
+DEFAULT_FAMILY = "SNUSprout"
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Create a distribution ZIP from built SNU Sprout Sans OTF files."
+        description="Create a distribution ZIP from built SNU Sprout OTF files."
     )
     parser.add_argument(
         "--input-dir",
         default="instance_otf",
-        help="Directory containing built SNU Sprout Sans OTF files",
+        help="Directory containing built SNU Sprout OTF files",
     )
     parser.add_argument(
         "--output-dir",
@@ -23,7 +23,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--zip-name",
-        help="Optional ZIP filename; defaults to SNUSproutSans-otf-YYYYMMDD.zip",
+        help="Optional ZIP filename; defaults to SNUSprout-otf-YYYYMMDD.zip",
     )
     parser.add_argument(
         "--family-name",

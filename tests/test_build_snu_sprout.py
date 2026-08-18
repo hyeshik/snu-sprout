@@ -4,23 +4,23 @@ import unittest
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-SCRIPT_PATH = ROOT / "build_snu_sprout_sans.py"
+SCRIPT_PATH = ROOT / "build_snu_sprout.py"
 
 
 def load_builder():
-    spec = importlib.util.spec_from_file_location("build_snu_sprout_sans", SCRIPT_PATH)
+    spec = importlib.util.spec_from_file_location("build_snu_sprout", SCRIPT_PATH)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
 
-class BuildSnuSproutSansTests(unittest.TestCase):
+class BuildSnuSproutTests(unittest.TestCase):
     def test_family_names_and_source_defaults_match_project_contract(self):
         builder = load_builder()
 
-        self.assertEqual(builder.FAMILY_NAME, "SNU Sprout Sans")
-        self.assertEqual(builder.POSTSCRIPT_FAMILY_NAME, "SNUSproutSans")
-        self.assertEqual(builder.FILE_FAMILY_NAME, "SNUSproutSans")
+        self.assertEqual(builder.FAMILY_NAME, "SNU Sprout")
+        self.assertEqual(builder.POSTSCRIPT_FAMILY_NAME, "SNUSprout")
+        self.assertEqual(builder.FILE_FAMILY_NAME, "SNUSprout")
         self.assertEqual(
             builder.DEFAULT_SOURCE_ZIP_URL,
             "https://seed.line.me/src/images/fonts/LINE_Seed_Sans_KR.zip",
@@ -63,7 +63,7 @@ class BuildSnuSproutSansTests(unittest.TestCase):
         self.assertEqual(builder.postscript_style_name("Thin", True), "ThinItalic")
         self.assertEqual(
             builder.output_filename("Thin", True),
-            "SNUSproutSans-ThinItalic.otf",
+            "SNUSprout-ThinItalic.otf",
         )
 
     def test_parser_maps_source_zip_url_and_build_modes(self):
