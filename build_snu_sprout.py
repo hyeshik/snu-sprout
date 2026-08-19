@@ -8,13 +8,13 @@ import os
 import urllib.request
 import zipfile
 from pathlib import Path
-from typing import Iterator, NamedTuple
+from typing import Iterable, Iterator, NamedTuple
 
 
 FAMILY_NAME = "SNU Sprout"
 POSTSCRIPT_FAMILY_NAME = "SNUSprout"
 FILE_FAMILY_NAME = POSTSCRIPT_FAMILY_NAME
-VERSION = "0.4.0"
+VERSION = "0.5.0"
 DEFAULT_SOURCE_ZIP_URL = "https://seed.line.me/src/images/fonts/LINE_Seed_Sans_KR.zip"
 DEFAULT_DOWNLOAD_DIR = "vendor/downloads"
 DEFAULT_SOURCE_DIR = "original"
@@ -23,6 +23,7 @@ DEFAULT_ITALIC_ANGLE = 10.0
 DEFAULT_GUARD_CLEARANCE = 30
 DEFAULT_GUARD_BUCKET_SIZE = 5
 SYNTHETIC_WEIGHT_REFERENCE_CODEPOINT = 0x49
+UNENCODED_NAME_PREFIX = "sprout"
 
 SOURCE_FILES = {
     "Thin": "LINESeedKR-Th.otf",
@@ -327,6 +328,62 @@ def agl_glyph_name(codepoint: int) -> str:
     return f"u{codepoint:04X}"
 
 
+def codepoint_from_agl_name(glyph_name: str) -> int | None:
+    """Recover the codepoint from a name :func:`agl_glyph_name` produced."""
+    if glyph_name.startswith("uni"):
+        digits = glyph_name[3:]
+        if len(digits) != 4:
+            return None
+    elif glyph_name.startswith("u"):
+        digits = glyph_name[1:]
+        if not 4 <= len(digits) <= 6:
+            return None
+    else:
+        return None
+
+    try:
+        return int(digits, 16)
+    except ValueError:
+        return None
+
+
+def glyph_name_codepoints(glyph_name: str) -> list[int]:
+    """Return every codepoint an AGL glyph name spells out.
+
+    A ligature name joins its components with ``_`` and a variant name carries a
+    ``.suffix``, so ``uni0066_uni0069`` is the fi ligature and ``uni0021.locl``
+    the Korean-localized exclamation mark. Both are unencoded, and the name is
+    the only record of the glyphs they are built from. Returns an empty list for
+    a name that is not written this way.
+    """
+    parts = glyph_name.split(".", 1)[0].split("_")
+    codepoints = []
+    for part in parts:
+        codepoint = codepoint_from_agl_name(part)
+        if codepoint is None:
+            return []
+        codepoints.append(codepoint)
+    return codepoints
+
+
+def slants_in_italic(
+    glyph_name: str, encoded_codepoints: Iterable[int] = ()
+) -> bool | None:
+    """Whether an italic build slants this glyph, or ``None`` if it has no identity.
+
+    The glyph name decides, because the builder writes the deciding codepoints
+    into it: a glyph the cmap cannot reach still follows the glyphs it is
+    substituted from, so the fi ligature slants with ``f`` and ``i``. Names that
+    are not AGL names fall back to the codepoints the cmap maps to the glyph.
+    """
+    codepoints = glyph_name_codepoints(glyph_name)
+    if not codepoints:
+        if not encoded_codepoints:
+            return None
+        codepoints = [min(encoded_codepoints)]
+    return all(should_slant_codepoint(codepoint) for codepoint in codepoints)
+
+
 def neutralize_cid_glyph_names(font, quiet: bool) -> int:
     """Rename flattened glyphs to AGL Unicode names.
 
@@ -340,6 +397,10 @@ def neutralize_cid_glyph_names(font, quiet: bool) -> int:
     (e.g. 겧 renders as 쨬). Renaming encoded glyphs to registry-neutral AGL
     names (``uniXXXX`` / ``uXXXXXX``) drops the Adobe ordering association, so
     every renderer honours the font ``cmap``.
+
+    Glyphs no codepoint maps to are renamed as well, after the encoded ones so
+    they can be named for their inputs: they carry the same ``Korea1.<cid>``
+    names, and they are what ``liga``, ``calt``, and ``locl`` substitute in.
     """
     renamed = 0
     with suppress_c_stderr(quiet):
@@ -352,6 +413,78 @@ def neutralize_cid_glyph_names(font, quiet: bool) -> int:
                 continue
             glyph.glyphname = new_name
             renamed += 1
+        renamed += neutralize_unencoded_glyph_names(font)
+    return renamed
+
+
+def gsub_subtable_features(font) -> dict[str, str]:
+    """Map every GSUB subtable name to the feature tag that reaches it.
+
+    Contextual lookups call nested subtables that no feature lists directly;
+    those map to an empty tag.
+    """
+    tags = {}
+    for lookup in font.gsub_lookups:
+        _, _, features = font.getLookupInfo(lookup)
+        tag = features[0][0] if features else ""
+        for subtable in font.getLookupSubtables(lookup):
+            tags[subtable] = tag
+    return tags
+
+
+def derived_glyph_names(font) -> dict[str, str]:
+    """Name every substitution output after the glyphs it is substituted from.
+
+    A ligature takes the AGL ligature name of its components
+    (``uni0066_uni0069``) and a single or alternate substitution takes its input
+    plus the feature that asks for it (``uni0021.locl``). Both spell out the
+    codepoints behind an unencoded glyph, which is what :func:`slants_in_italic`
+    reads back, and neither name belongs to a glyph registry.
+    """
+    feature_tags = gsub_subtable_features(font)
+    names: dict[str, str] = {}
+    for glyph in font.glyphs():
+        for subtable, kind, *operands in glyph.getPosSub("*"):
+            if kind == "Ligature":
+                names.setdefault(glyph.glyphname, "_".join(operands))
+            elif kind in ("Substitution", "AltSubs", "MultSubs"):
+                suffix = feature_tags.get(subtable) or "alt"
+                for output in operands:
+                    names.setdefault(output, f"{glyph.glyphname}.{suffix}")
+    return names
+
+
+def unique_glyph_name(preferred: str, taken: set[str]) -> str:
+    """Return ``preferred``, or the first free ``preferred<n>``, and claim it."""
+    name = preferred
+    index = 1
+    while name in taken:
+        index += 1
+        name = f"{preferred}{index}"
+    taken.add(name)
+    return name
+
+
+def neutralize_unencoded_glyph_names(font) -> int:
+    """Rename the glyphs no codepoint reaches, keeping their inputs readable."""
+    derived = derived_glyph_names(font)
+    taken = {glyph.glyphname for glyph in font.glyphs()}
+    renamed = 0
+    for glyph in font.glyphs():
+        if glyph.unicode is not None and glyph.unicode >= 0:
+            continue
+        if glyph.glyphname == ".notdef":
+            continue
+        preferred = derived.get(glyph.glyphname)
+        if preferred is None:
+            # Nothing substitutes this glyph in, so only the Adobe ordering
+            # prefix has to go.
+            preferred = UNENCODED_NAME_PREFIX + glyph.glyphname.rsplit(".", 1)[-1]
+        if preferred == glyph.glyphname:
+            continue
+        taken.discard(glyph.glyphname)
+        glyph.glyphname = unique_glyph_name(preferred, taken)
+        renamed += 1
     return renamed
 
 
@@ -384,11 +517,10 @@ def apply_synthetic_weight(font, offset_width: int, quiet: bool) -> int:
     changed = 0
     with suppress_c_stderr(quiet):
         for glyph in list(font.glyphs()):
-            if glyph.unicode >= 0:
-                if glyph.references:
-                    glyph.unlinkRef()
-                glyph.changeWeight(offset_width, "auto", 0, 0, "auto")
-                changed += 1
+            if glyph.references:
+                glyph.unlinkRef()
+            glyph.changeWeight(offset_width, "auto", 0, 0, "auto")
+            changed += 1
     return changed
 
 
@@ -398,7 +530,8 @@ def slant_non_cjk_glyphs(font, angle: float) -> tuple[int, int]:
     upright = 0
     for glyph in list(font.glyphs()):
         codepoint = glyph.unicode
-        if not should_slant_codepoint(codepoint):
+        encoded = (codepoint,) if codepoint is not None and codepoint >= 0 else ()
+        if not slants_in_italic(glyph.glyphname, encoded):
             upright += 1
             continue
         if glyph.references:
@@ -406,15 +539,6 @@ def slant_non_cjk_glyphs(font, angle: float) -> tuple[int, int]:
         glyph.transform((1, 0, slope, 1, 0, 0))
         slanted += 1
     return slanted, upright
-
-
-def remove_unencoded_glyphs(font) -> int:
-    removed = 0
-    for glyph in list(font.glyphs()):
-        if glyph.unicode < 0 and glyph.glyphname != ".notdef":
-            font.removeGlyph(glyph)
-            removed += 1
-    return removed
 
 
 def rewrite_metadata(font, spec: StyleSpec, italic: bool, italic_angle: float) -> None:
@@ -479,7 +603,6 @@ def build_variant(fontforge, args, masters: dict[str, Path], spec: StyleSpec, it
         synthetic_offset_width = spec.synthetic_weight_steps * args.synthetic_weight_width
         synthetic_changed = apply_synthetic_weight(font, synthetic_offset_width, quiet)
         slanted, upright = slant_non_cjk_glyphs(font, args.italic_angle) if italic else (0, 0)
-        removed_unencoded = remove_unencoded_glyphs(font)
         italic_angle = -args.italic_angle if italic else 0
         rewrite_metadata(font, spec, italic, italic_angle)
 
@@ -511,7 +634,6 @@ def build_variant(fontforge, args, masters: dict[str, Path], spec: StyleSpec, it
     print(
         f"{output_path}: synthetic_weighted={synthetic_changed}, "
         f"synthetic_offset_width={synthetic_offset_width}, "
-        f"unencoded_removed={removed_unencoded}, "
         f"italic_slanted={slanted}, italic_upright={upright}, "
         f"cid_flattened={flattened}, glyphs_renamed={renamed}, "
         f"head_revision={revision}, italic_guard={guard_summary}, "

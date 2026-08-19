@@ -28,7 +28,7 @@ from fontTools.otlLib.builder import (
 from fontTools.pens.boundsPen import BoundsPen
 from fontTools.ttLib import TTFont
 
-from build_snu_sprout import is_cjk_codepoint
+from build_snu_sprout import slants_in_italic
 
 
 DEFAULT_CLEARANCE = 30
@@ -52,30 +52,6 @@ def round_up(value: float, step: int) -> int:
 
 def round_down(value: float, step: int) -> int:
     return int(math.floor(value / step) * step)
-
-
-def codepoint_from_agl_name(glyph_name: str) -> int | None:
-    """Recover the codepoint from an AGL name written by the builder.
-
-    The builder renames every encoded glyph to ``uniXXXX`` / ``uXXXXXX`` after
-    flattening, so the glyph name records exactly the codepoint that decided
-    whether the outline was slanted.
-    """
-    if glyph_name.startswith("uni"):
-        digits = glyph_name[3:]
-        if len(digits) != 4:
-            return None
-    elif glyph_name.startswith("u"):
-        digits = glyph_name[1:]
-        if not 4 <= len(digits) <= 6:
-            return None
-    else:
-        return None
-
-    try:
-        return int(digits, 16)
-    except ValueError:
-        return None
 
 
 def guard_units(
@@ -109,14 +85,6 @@ def encoded_glyph_codepoints(font: TTFont) -> dict[str, set[int]]:
     return codepoints
 
 
-def primary_codepoint(glyph_name: str, codepoints: set[int]) -> int | None:
-    """Pick the codepoint that governed the slant decision for this glyph."""
-    from_name = codepoint_from_agl_name(glyph_name)
-    if from_name is not None:
-        return from_name
-    return min(codepoints) if codepoints else None
-
-
 def collect_geometry_classes(
     font: TTFont,
     bucket_size: int,
@@ -126,22 +94,28 @@ def collect_geometry_classes(
     Both roundings are deliberately conservative: overhangs round up and left
     side bearings round down, so the guard computed for a class is never less
     than what any individual member of that class needs.
+
+    Every glyph is bucketed, not only the encoded ones, because ``liga``,
+    ``calt``, and ``locl`` substitute in glyphs the cmap cannot reach and those
+    were slanted too. The builder's own rule decides the side, so the guard
+    cannot drift away from what was sheared.
     """
     glyph_set = font.getGlyphSet()
     hmtx = font["hmtx"]
+    codepoints_by_glyph = encoded_glyph_codepoints(font)
     slanted_classes: dict[int, list[str]] = defaultdict(list)
     upright_classes: dict[int, list[str]] = defaultdict(list)
 
-    for glyph_name, codepoints in encoded_glyph_codepoints(font).items():
-        codepoint = primary_codepoint(glyph_name, codepoints)
-        if codepoint is None:
+    for glyph_name in font.getGlyphOrder():
+        slanted = slants_in_italic(glyph_name, codepoints_by_glyph.get(glyph_name, set()))
+        if slanted is None:
             continue
 
         bounds = glyph_bounds(glyph_set, glyph_name)
         if bounds is None:
             continue
 
-        if is_cjk_codepoint(codepoint):
+        if not slanted:
             upright_classes[round_down(bounds[0], bucket_size)].append(glyph_name)
             continue
 

@@ -36,8 +36,9 @@ Expected behavior:
 - `Light`, `Medium`, `ExtraBold`: synthetic weights derived by offsetting outlines from the nearest master
 - `ExtraLight`: intentionally not built because negative outline thinning damages Latin capitals
 - each built weight also produces an italic companion by slanting non-CJK glyphs while keeping Han, Hangul, Hiragana, Katakana, and Bopomofo glyphs upright
-- every italic build then appends a class-based GPOS pair positioning lookup to each `kern` feature so a slanted glyph cannot collide with the following upright CJK glyph; the shear leaves advance widths alone, so without it `f다` overlaps by 82 units. Split the two sides with the builder's own `is_cjk_codepoint`, so the guard cannot drift away from the slanting rule, and keep the rounding conservative (overhangs up, side bearings down)
-- after `cidFlatten`, every encoded glyph is renamed to a registry-neutral AGL name (`uniXXXX` / `uXXXXXX`); do not reintroduce the `Korea1.<cid>` names FontForge derives from the masters' (mislabeled) Adobe-Korea1 ROS, because macOS Core Text then resolves them through the standard Adobe-Korea1 CMap and shows wrong syllables
+- every italic build then appends a class-based GPOS pair positioning lookup to each `kern` feature so a slanted glyph cannot collide with the following upright CJK glyph; the shear leaves advance widths alone, so without it `f다` overlaps by 82 units. Split the two sides with the builder's own `slants_in_italic`, so the guard cannot drift away from the slanting rule, and keep the rounding conservative (overhangs up, side bearings down)
+- after `cidFlatten`, every glyph is renamed to a registry-neutral name: encoded glyphs take their AGL codepoint name (`uniXXXX` / `uXXXXXX`) and substituted glyphs take the AGL names of their inputs (`uni0066_uni0069` for fi, `uni0021.locl`). Do not reintroduce the `Korea1.<cid>` names FontForge derives from the masters' (mislabeled) Adobe-Korea1 ROS, because macOS Core Text then resolves them through the standard Adobe-Korea1 CMap and shows wrong syllables
+- keep the glyphs only `liga`, `calt`, and `locl` reach. No codepoint maps to the `fi`/`fl`/`ff`/`ffi`/`ffl` ligatures, the contextual `j` alternates, or the localized punctuation, and deleting them makes FontForge drop the lookups that produce them, which is how the Latin ligatures were lost between 0.1.2 and 0.4.0. Weighting and slanting read the codepoints back out of the names, so a substituted glyph follows the glyphs it is substituted from
 
 Do not replace this with a designspace interpolation workflow unless you first verify master compatibility across the full glyph set.
 
@@ -65,6 +66,7 @@ If you change the workflow:
 - keep `build_snu_sprout.py` runnable end-to-end from raw OTF inputs
 - keep automatic source download working unless intentionally removing that feature
 - preserve the `SNU Sprout` renaming step
+- keep every glyph a lookup can reach; a glyph the cmap misses is not dead weight
 - preserve the upright-CJK behavior in the synthetic italic outputs unless intentionally redesigning that model
 - keep the italic collision guard as kerning only: it must not insert a space glyph, must not add a line-break opportunity, and must leave non-colliding pairs at their designed spacing
 
@@ -78,6 +80,7 @@ After changing the build logic, at minimum:
 2. Run `fontforge -lang=py -script build_snu_sprout.py Regular --upright-only`
 3. Confirm the output family/style names are `SNU Sprout`
 4. Confirm the expected `OS/2.usWeightClass` is written
+5. Confirm `liga`, `calt`, `locl`, and `frac` all survive into the output, and that shaping `fi fl ff ffi ffl` returns five ligature glyphs
 
 If italic layout changed, also build one italic and confirm with a real shaper
 that `f다` has a non-negative ink gap while a non-colliding pair such as `h다`

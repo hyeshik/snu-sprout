@@ -97,8 +97,8 @@ Default build settings:
 - Synthetic weight reference glyph: `I`
 - Italic collision guard ink clearance: `30` units at UPM 1000
 - Italic collision guard geometry bucket: `5` units
-- Font version: `0.4.0`
-- Package name: `SNUSprout-0.4.0.zip`
+- Font version: `0.5.0`
+- Package name: `SNUSprout-0.5.0.zip`
 
 The package name is derived from the `VERSION` constant in
 `build_snu_sprout.py`, which is the single source of truth for the font version.
@@ -113,8 +113,25 @@ names glyphs `Korea1.<cid>`. macOS Core Text recognizes that registered ordering
 and resolves such glyphs through the *standard* Adobe-Korea1 (UniKS) CMap instead
 of the font `cmap`, so most syllables with a final consonant rendered as the
 wrong character (for example, 겧 displayed as 쨬). The build therefore renames
-every encoded glyph to a registry-neutral AGL name (`uniXXXX` / `uXXXXXX`) right
-after flattening, which makes every renderer honor the font `cmap`.
+every glyph to a registry-neutral name right after flattening, which makes every
+renderer honor the font `cmap`. Encoded glyphs take their AGL codepoint name
+(`uniXXXX` / `uXXXXXX`); the rest are named for the glyphs they are substituted
+from, as described below.
+
+### Glyphs only OpenType features reach
+
+No codepoint maps to the `fi`, `fl`, `ff`, `ffi`, and `ffl` ligatures, the
+contextual `j` alternates, or the Korean-localized punctuation. They exist only
+as the output of a `liga`, `calt`, or `locl` lookup, so they are kept even
+though the `cmap` cannot reach them: dropping them makes FontForge drop the
+lookups that produce them, and the Latin ligatures stop forming.
+
+Each one is named for its inputs — `uni0066_uni0069` for fi, `uni0021.locl` for
+the localized exclamation mark — which keeps the name registry-neutral and
+records the codepoints behind an unencoded glyph. Synthetic weighting and the
+italic slant read those codepoints back, so a substituted glyph is weighted and
+sheared exactly like the glyphs it replaces, and the italic collision guard
+covers it as well.
 
 ### Italic-to-CJK collision guard
 

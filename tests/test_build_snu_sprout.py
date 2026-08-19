@@ -7,6 +7,42 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 SCRIPT_PATH = ROOT / "build_snu_sprout.py"
 
 
+class FakeGlyph:
+    """The slice of FontForge's glyph API the naming pass uses."""
+
+    def __init__(self, glyphname, pos_sub):
+        self.glyphname = glyphname
+        self.unicode = -1 if glyphname.startswith("Korea1.") else 0x41
+        self._pos_sub = pos_sub
+
+    def getPosSub(self, subtable):
+        assert subtable == "*"
+        return self._pos_sub
+
+
+class FakeFont:
+    def __init__(self, lookups, glyphs):
+        self._lookups = lookups
+        self._glyphs = [FakeGlyph(name, pos_sub) for name, pos_sub in glyphs.items()]
+
+    @property
+    def gsub_lookups(self):
+        return tuple(self._lookups)
+
+    def getLookupInfo(self, lookup):
+        features, _ = self._lookups[lookup]
+        return "gsub_single", (), tuple((tag, ()) for tag in features)
+
+    def getLookupSubtables(self, lookup):
+        return self._lookups[lookup][1]
+
+    def glyphs(self):
+        return tuple(self._glyphs)
+
+    def glyph_names(self):
+        return [glyph.glyphname for glyph in self._glyphs]
+
+
 def load_builder():
     spec = importlib.util.spec_from_file_location("build_snu_sprout", SCRIPT_PATH)
     module = importlib.util.module_from_spec(spec)
@@ -127,6 +163,95 @@ class BuildSnuSproutTests(unittest.TestCase):
         self.assertEqual(builder.agl_glyph_name(ord("A")), "uni0041")
         self.assertEqual(builder.agl_glyph_name(0x20000), "u20000")
         self.assertFalse(builder.agl_glyph_name(0xACA7).startswith("Korea1"))
+
+    def test_agl_names_recover_the_codepoints_that_decided_the_slant(self):
+        builder = load_builder()
+
+        self.assertEqual(builder.codepoint_from_agl_name("uni0066"), 0x66)
+        self.assertEqual(builder.codepoint_from_agl_name("uniB2E4"), 0xB2E4)
+        self.assertEqual(builder.codepoint_from_agl_name("u20000"), 0x20000)
+        self.assertIsNone(builder.codepoint_from_agl_name("Korea1.1234"))
+        self.assertIsNone(builder.codepoint_from_agl_name(".notdef"))
+        self.assertIsNone(builder.codepoint_from_agl_name("uniZZZZ"))
+
+        # A ligature spells out every component, a variant drops its suffix.
+        self.assertEqual(builder.glyph_name_codepoints("uni0066_uni0069"), [0x66, 0x69])
+        self.assertEqual(
+            builder.glyph_name_codepoints("uni0066_uni0066_uni006C"),
+            [0x66, 0x66, 0x6C],
+        )
+        self.assertEqual(builder.glyph_name_codepoints("uni0021.locl"), [0x21])
+        self.assertEqual(builder.glyph_name_codepoints("sprout12270"), [])
+
+    def test_substituted_glyphs_are_named_for_the_glyphs_they_come_from(self):
+        builder = load_builder()
+        font = FakeFont(
+            lookups={
+                "liga lookup": (("liga",), ("liga subtable",)),
+                "locl lookup": (("locl",), ("locl subtable",)),
+                "nested lookup": ((), ("nested subtable",)),
+            },
+            glyphs={
+                "uni0066": (),
+                "uni0069": (),
+                "uni0021": (("locl subtable", "Substitution", "Korea1.12282"),),
+                "uni006A": (("nested subtable", "Substitution", "Korea1.12258"),),
+                "Korea1.12263": (("liga subtable", "Ligature", "uni0066", "uni0069"),),
+                "Korea1.12282": (),
+                "Korea1.12258": (),
+                "Korea1.12270": (),
+            },
+        )
+
+        self.assertEqual(
+            builder.derived_glyph_names(font),
+            {
+                "Korea1.12282": "uni0021.locl",
+                # A contextual lookup no feature lists still names its output.
+                "Korea1.12258": "uni006A.alt",
+                "Korea1.12263": "uni0066_uni0069",
+            },
+        )
+
+        renamed = builder.neutralize_unencoded_glyph_names(font)
+
+        self.assertEqual(renamed, 4)
+        self.assertEqual(
+            font.glyph_names()[-4:],
+            [
+                "uni0066_uni0069",
+                "uni0021.locl",
+                "uni006A.alt",
+                # Nothing substitutes this one in, so it only loses the Adobe
+                # ordering prefix that makes macOS resolve it through the
+                # standard Adobe-Korea1 CMap.
+                "sprout12270",
+            ],
+        )
+
+    def test_glyph_names_stay_unique_when_two_variants_share_a_source(self):
+        builder = load_builder()
+
+        taken = {"uni006A.alt"}
+        self.assertEqual(builder.unique_glyph_name("uni006A.alt", taken), "uni006A.alt2")
+        self.assertEqual(builder.unique_glyph_name("uni006A.alt", taken), "uni006A.alt3")
+
+    def test_substituted_glyphs_follow_the_glyphs_they_are_built_from(self):
+        builder = load_builder()
+
+        # fi, ffl and the Korean-localized exclamation mark are unencoded, so
+        # the slant decision has to come from the glyphs they replace.
+        self.assertTrue(builder.slants_in_italic("uni0066_uni0069"))
+        self.assertTrue(builder.slants_in_italic("uni0066_uni0066_uni006C"))
+        self.assertTrue(builder.slants_in_italic("uni0021.locl"))
+        self.assertFalse(builder.slants_in_italic("uniAC00"))
+        self.assertFalse(builder.slants_in_italic("uni0066_uniAC00"))
+        # No readable identity: neither side of the guard may claim it.
+        self.assertIsNone(builder.slants_in_italic("sprout12270"))
+        self.assertIsNone(builder.slants_in_italic(".notdef"))
+        # An unreadable name falls back to what the cmap maps to the glyph.
+        self.assertTrue(builder.slants_in_italic("f.alt", {0x66}))
+        self.assertFalse(builder.slants_in_italic("uni.alt", {0xAC00}))
 
     def test_italic_slants_non_cjk_and_keeps_cjk_upright(self):
         builder = load_builder()

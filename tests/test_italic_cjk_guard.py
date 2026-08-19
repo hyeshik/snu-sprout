@@ -86,22 +86,18 @@ class ItalicCjkGuardTests(unittest.TestCase):
                 gap = real_side_bearing - real_overhang + units
                 self.assertGreaterEqual(gap, clearance)
 
-    def test_agl_names_recover_the_codepoint_that_decided_the_slant(self):
+    def test_glyphs_the_cmap_cannot_reach_still_pick_a_side(self):
         guard = load_guard()
 
-        self.assertEqual(guard.codepoint_from_agl_name("uni0066"), 0x66)
-        self.assertEqual(guard.codepoint_from_agl_name("uniB2E4"), 0xB2E4)
-        self.assertEqual(guard.codepoint_from_agl_name("u20000"), 0x20000)
-        self.assertIsNone(guard.codepoint_from_agl_name("Korea1.1234"))
-        self.assertIsNone(guard.codepoint_from_agl_name(".notdef"))
-        self.assertIsNone(guard.codepoint_from_agl_name("uniZZZZ"))
-
-    def test_primary_codepoint_falls_back_to_the_cmap(self):
-        guard = load_guard()
-
-        self.assertEqual(guard.primary_codepoint("uni0066", {0x66, 0xFF46}), 0x66)
-        self.assertEqual(guard.primary_codepoint("f.alt", {0xFF46, 0x66}), 0x66)
-        self.assertIsNone(guard.primary_codepoint(".notdef", set()))
+        # The substituted glyphs the builder keeps are unencoded, so only their
+        # names say what was sheared; a glyph with no readable name is skipped
+        # rather than guessed at.
+        self.assertTrue(guard.slants_in_italic("uni0066_uni0069", set()))
+        self.assertTrue(guard.slants_in_italic("uni0021.locl", set()))
+        self.assertFalse(guard.slants_in_italic("uniB2E4", set()))
+        self.assertIsNone(guard.slants_in_italic("sprout12270", set()))
+        self.assertIsNone(guard.slants_in_italic(".notdef", set()))
+        self.assertTrue(guard.slants_in_italic("f.alt", {0xFF46, 0x66}))
 
     def test_guard_side_matches_the_builder_slant_rule(self):
         guard = load_guard()
@@ -124,8 +120,8 @@ class ItalicCjkGuardTests(unittest.TestCase):
             0x3001,
         ):
             self.assertEqual(
-                guard.is_cjk_codepoint(codepoint),
-                not builder.should_slant_codepoint(codepoint),
+                guard.slants_in_italic(builder.agl_glyph_name(codepoint)),
+                builder.should_slant_codepoint(codepoint),
                 f"U+{codepoint:04X} is classified inconsistently",
             )
 
