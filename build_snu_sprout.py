@@ -14,7 +14,7 @@ from typing import Iterator, NamedTuple
 FAMILY_NAME = "SNU Sprout"
 POSTSCRIPT_FAMILY_NAME = "SNUSprout"
 FILE_FAMILY_NAME = POSTSCRIPT_FAMILY_NAME
-VERSION = "0.3.0"
+VERSION = "0.4.0"
 DEFAULT_SOURCE_ZIP_URL = "https://seed.line.me/src/images/fonts/LINE_Seed_Sans_KR.zip"
 DEFAULT_DOWNLOAD_DIR = "vendor/downloads"
 DEFAULT_SOURCE_DIR = "original"
@@ -95,6 +95,47 @@ def suppress_c_stderr(enabled: bool) -> Iterator[None]:
         os.dup2(saved_stderr, 2)
         os.close(saved_stderr)
         os.close(devnull)
+
+
+def font_revision(version: str = VERSION) -> float:
+    """``head.fontRevision`` for our dotted version string.
+
+    FontForge reads only the major and minor components of ``font.version``, so
+    it writes the same revision for 0.3.0, 0.3.1 and 0.3.2 and a patch release
+    becomes indistinguishable from its predecessor to anything that reads
+    ``head`` rather than the name records. Minor and patch become decimal places
+    instead, matching the sibling families: 0.3.0 is 0.3 and 0.3.1 is 0.301.
+    That stays unambiguous only while minor is below 10 and patch below 100, so
+    anything larger is refused rather than shipped as a colliding revision.
+    """
+    parts = version.split(".")
+    if len(parts) not in (2, 3):
+        raise ValueError(f"Expected a major.minor[.patch] version: {version}")
+    major, minor = int(parts[0]), int(parts[1])
+    patch = int(parts[2]) if len(parts) == 3 else 0
+    if not 0 <= minor < 10 or not 0 <= patch < 100:
+        raise ValueError(
+            f"Version {version} cannot be mapped to a unique head.fontRevision; "
+            "pick a wider encoding before releasing it."
+        )
+    return round(major + minor / 10 + patch / 1000, 6)
+
+
+def stamp_font_revision(output_path: Path) -> float:
+    """Rewrite ``head.fontRevision`` on a generated OTF, atomically."""
+    from fontTools.ttLib import TTFont
+
+    revision = font_revision()
+    font = TTFont(str(output_path))
+    temporary_path = output_path.with_suffix(output_path.suffix + ".rev-tmp")
+    try:
+        font["head"].fontRevision = revision
+        font.save(str(temporary_path))
+    finally:
+        font.close()
+
+    os.replace(temporary_path, output_path)
+    return revision
 
 
 def style_name(style: str, italic: bool) -> str:
@@ -450,6 +491,8 @@ def build_variant(fontforge, args, masters: dict[str, Path], spec: StyleSpec, it
     finally:
         font.close()
 
+    revision = stamp_font_revision(output_path)
+
     guard_summary = "none"
     if italic and not args.no_italic_guard:
         from add_italic_cjk_guard import guard_font_file
@@ -471,7 +514,7 @@ def build_variant(fontforge, args, masters: dict[str, Path], spec: StyleSpec, it
         f"unencoded_removed={removed_unencoded}, "
         f"italic_slanted={slanted}, italic_upright={upright}, "
         f"cid_flattened={flattened}, glyphs_renamed={renamed}, "
-        f"italic_guard={guard_summary}, "
+        f"head_revision={revision}, italic_guard={guard_summary}, "
         f"validate=0x{validation_state:x}"
     )
     return output_path

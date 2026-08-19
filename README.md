@@ -97,8 +97,8 @@ Default build settings:
 - Synthetic weight reference glyph: `I`
 - Italic collision guard ink clearance: `30` units at UPM 1000
 - Italic collision guard geometry bucket: `5` units
-- Font version: `0.3.0`
-- Package name: `SNUSprout-0.3.0.zip`
+- Font version: `0.4.0`
+- Package name: `SNUSprout-0.4.0.zip`
 
 The package name is derived from the `VERSION` constant in
 `build_snu_sprout.py`, which is the single source of truth for the font version.
@@ -212,6 +212,7 @@ version tag for each published package.
 ## Repository Layout
 
 - `.github/workflows/build-package.yml`: GitHub Actions package and release workflow
+- `RELEASE_NOTE.md`: notes for the current release
 - `build_snu_sprout.py`: FontForge build script
 - `add_italic_cjk_guard.py`: italic-to-upright-CJK collision guard, applied by the builder
 - `make_distribution_zip.py`: optional helper to package built OTFs into a release ZIP

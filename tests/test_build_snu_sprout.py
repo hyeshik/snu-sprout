@@ -82,6 +82,25 @@ class BuildSnuSproutTests(unittest.TestCase):
             "https://example.test/LINE_Seed_Sans_KR.zip",
         )
 
+    def test_head_revision_distinguishes_patch_releases(self):
+        builder = load_builder()
+
+        # FontForge reads only major.minor from font.version, so it writes the
+        # same head.fontRevision for 0.3.0 and 0.3.1. The builder stamps the
+        # revision itself so a patch release is not mistaken for its
+        # predecessor by anything reading head instead of the name records.
+        self.assertEqual(builder.font_revision("0.3.0"), 0.3)
+        self.assertEqual(builder.font_revision("0.3.1"), 0.301)
+        self.assertEqual(builder.font_revision("0.4.0"), 0.4)
+        self.assertEqual(builder.font_revision("1.0"), 1.0)
+        self.assertNotEqual(
+            builder.font_revision("0.3.0"), builder.font_revision("0.3.1")
+        )
+        self.assertEqual(builder.font_revision(), builder.font_revision(builder.VERSION))
+        for ambiguous in ("0.10.0", "0.3.100", "0"):
+            with self.assertRaises(ValueError):
+                builder.font_revision(ambiguous)
+
     def test_parser_exposes_italic_guard_controls(self):
         builder = load_builder()
 
