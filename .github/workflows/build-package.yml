@@ -74,6 +74,7 @@ jobs:
         run: |
           gh release create "${GITHUB_REF_NAME}" \
             dist/SNUSprout-*.zip \
+            --repo "${GITHUB_REPOSITORY}" \
             --title "SNU Sprout ${GITHUB_REF_NAME}" \
             --generate-notes \
             --verify-tag
