@@ -14,7 +14,7 @@ from typing import Iterable, Iterator, NamedTuple
 FAMILY_NAME = "SNU Sprout"
 POSTSCRIPT_FAMILY_NAME = "SNUSprout"
 FILE_FAMILY_NAME = POSTSCRIPT_FAMILY_NAME
-VERSION = "0.5.0"
+VERSION = "0.6.0"
 DEFAULT_SOURCE_ZIP_URL = "https://seed.line.me/src/images/fonts/LINE_Seed_Sans_KR.zip"
 DEFAULT_DOWNLOAD_DIR = "vendor/downloads"
 DEFAULT_SOURCE_DIR = "original"
@@ -22,6 +22,7 @@ DEFAULT_OUTPUT_DIR = "instance_otf"
 DEFAULT_ITALIC_ANGLE = 10.0
 DEFAULT_GUARD_CLEARANCE = 30
 DEFAULT_GUARD_BUCKET_SIZE = 5
+USE_TYPO_METRICS = 1 << 7
 SYNTHETIC_WEIGHT_REFERENCE_CODEPOINT = 0x49
 UNENCODED_NAME_PREFIX = "sprout"
 
@@ -541,6 +542,17 @@ def slant_non_cjk_glyphs(font, angle: float) -> tuple[int, int]:
     return slanted, upright
 
 
+def os2_stylemap(spec: StyleSpec, italic: bool) -> int:
+    stylemap = USE_TYPO_METRICS
+    if italic:
+        stylemap |= 1
+    if spec.weight >= 700:
+        stylemap |= 32
+    if not italic and spec.weight == 400:
+        stylemap |= 64
+    return stylemap
+
+
 def rewrite_metadata(font, spec: StyleSpec, italic: bool, italic_angle: float) -> None:
     output_style = style_name(spec.style, italic)
     full_name = f"{FAMILY_NAME} {output_style}"
@@ -558,9 +570,7 @@ def rewrite_metadata(font, spec: StyleSpec, italic: bool, italic_angle: float) -
     font.os2_weight = spec.weight
     font.os2_width = 5
     font.os2_vendor = "SNUS"
-    font.os2_stylemap = (1 if italic else 0) | (32 if spec.weight >= 700 else 0)
-    if not italic and spec.weight == 400:
-        font.os2_stylemap = 64
+    font.os2_stylemap = os2_stylemap(spec, italic)
 
     notice = (
         "SNU Sprout is a derivative of LINE Seed Sans KR and does not use "

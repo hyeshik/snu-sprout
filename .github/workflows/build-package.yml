@@ -35,14 +35,15 @@ jobs:
       - name: Run unit tests
         run: make test
 
-      - name: Build package
-        run: make package
+      - name: Build distribution
+        run: make distribution
 
-      - name: Verify package
+      - name: Verify distribution
         run: |
           test "$(find instance_otf -maxdepth 1 -name 'SNUSprout-*.otf' | wc -l)" -eq 12
           test -f "$PACKAGE_ZIP"
-          unzip -l "$PACKAGE_ZIP"
+          test "$(unzip -Z1 "$PACKAGE_ZIP" | grep -Ec '^[^/]+$')" -eq 14
+          test -z "$(unzip -Z1 "$PACKAGE_ZIP" | grep -Ev '^(SNUSprout-[A-Za-z]+\.otf|LICENSE(-LINESeedSansKR)?\.txt)$')"
 
       - name: Upload package artifact
         uses: actions/upload-artifact@v4

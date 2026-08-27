@@ -80,7 +80,8 @@ After changing the build logic, at minimum:
 2. Run `fontforge -lang=py -script build_snu_sprout.py Regular --upright-only`
 3. Confirm the output family/style names are `SNU Sprout`
 4. Confirm the expected `OS/2.usWeightClass` is written
-5. Confirm `liga`, `calt`, `locl`, and `frac` all survive into the output, and that shaping `fi fl ff ffi ffl` returns five ligature glyphs
+5. Confirm `OS/2.fsSelection` keeps bit 7 (`USE_TYPO_METRICS`) set
+6. Confirm `liga`, `calt`, `locl`, and `frac` all survive into the output, and that shaping `fi fl ff ffi ffl` returns five ligature glyphs
 
 If italic layout changed, also build one italic and confirm with a real shaper
 that `f다` has a non-negative ink gap while a non-colliding pair such as `h다`

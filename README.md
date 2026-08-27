@@ -64,11 +64,15 @@ Run the tests:
 make test
 ```
 
-Build a ZIP package containing the generated OTF files and `README.md`:
+Build the distribution ZIP:
 
 ```sh
-make package
+make distribution
 ```
+
+The ZIP has no wrapper directory. Its root contains only the 12 OTF files,
+`LICENSE.txt`, and `LICENSE-LINESeedSansKR.txt`; the README, release notes, and
+other project files are not distributed.
 
 Remove generated fonts and downloaded source files:
 
@@ -97,8 +101,9 @@ Default build settings:
 - Synthetic weight reference glyph: `I`
 - Italic collision guard ink clearance: `30` units at UPM 1000
 - Italic collision guard geometry bucket: `5` units
-- Font version: `0.5.0`
-- Package name: `SNUSprout-0.5.0.zip`
+- Typographic line metrics: preserve LINE Seed Sans KR's `USE_TYPO_METRICS` flag
+- Font version: `0.6.0` (`head.fontRevision == 0.6`)
+- Package name: `SNUSprout-0.6.0.zip`
 
 The package name is derived from the `VERSION` constant in
 `build_snu_sprout.py`, which is the single source of truth for the font version.
@@ -202,7 +207,7 @@ fontforge -lang=py -script build_snu_sprout.py \
 The same options can be passed through `make` variables:
 
 ```sh
-make package SOURCE_DIR=path/to/LINESeedKR/fonts BUILD_FLAGS=--no-download
+make distribution SOURCE_DIR=path/to/LINESeedKR/fonts BUILD_FLAGS=--no-download
 ```
 
 ## GitHub Actions
@@ -232,7 +237,9 @@ version tag for each published package.
 - `RELEASE_NOTE.md`: notes for the current release
 - `build_snu_sprout.py`: FontForge build script
 - `add_italic_cjk_guard.py`: italic-to-upright-CJK collision guard, applied by the builder
-- `make_distribution_zip.py`: optional helper to package built OTFs into a release ZIP
+- `scripts/package_distribution.py`: creates the flat OTF-and-license release ZIP
+- `LICENSE`: SNU Sprout license and upstream copyright notice
+- `licenses/LINESeedSansKR.txt`: LINE Seed Sans KR source license
 - `tests/`: unit tests for pure helper logic
 - `.gitignore`: excludes source fonts and generated artifacts
 - `original/`: expected location of upstream source fonts, not tracked
@@ -244,6 +251,9 @@ version tag for each published package.
 
 - The builder rewrites family/style naming to use `SNU Sprout` instead of
   the reserved upstream family name.
+- Output fonts preserve the upstream `OS/2.fsSelection` `USE_TYPO_METRICS`
+  behavior so the large fallback `hhea` box does not shift text in layouts
+  that center font line boxes.
 - Missing source OTFs are fetched automatically from the upstream LINE Seed KR
   ZIP unless `--no-download` is used.
 - Italic outputs are synthetic obliques: non-CJK glyphs are slanted by the

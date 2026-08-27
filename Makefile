@@ -10,7 +10,7 @@ VERSION ?= $(shell sed -n 's/^VERSION = "\(.*\)"$$/\1/p' $(BUILD_SCRIPT))
 PACKAGE_NAME ?= SNUSprout-$(VERSION)
 PACKAGE_ZIP ?= dist/$(PACKAGE_NAME).zip
 
-.PHONY: build test package clean
+.PHONY: build test distribution clean
 
 build:
 	rm -f "$(OUTPUT_DIR)"/SNUSprout-*.otf "$(OUTPUT_DIR)"/SNUSprout-*.otf.guard-tmp
@@ -24,11 +24,10 @@ build:
 test:
 	$(PYTHON) -m unittest discover -s tests
 
-package: build
-	$(PYTHON) make_distribution_zip.py \
+distribution: build
+	$(PYTHON) scripts/package_distribution.py \
 		--input-dir "$(OUTPUT_DIR)" \
-		--zip-name "$(PACKAGE_NAME).zip" \
-		--include-readme
+		--output "$(PACKAGE_ZIP)"
 	test -f "$(PACKAGE_ZIP)"
 
 clean:

@@ -91,6 +91,23 @@ class BuildSnuSproutTests(unittest.TestCase):
             all(spec.synthetic_weight_steps >= 0 for spec in builder.STYLE_SPECS)
         )
 
+    def test_stylemap_preserves_upstream_typographic_metrics(self):
+        builder = load_builder()
+        specs = {spec.style: spec for spec in builder.STYLE_SPECS}
+
+        self.assertEqual(builder.os2_stylemap(specs["Thin"], False), 128)
+        self.assertEqual(builder.os2_stylemap(specs["Regular"], False), 192)
+        self.assertEqual(builder.os2_stylemap(specs["Bold"], False), 160)
+        self.assertEqual(builder.os2_stylemap(specs["Regular"], True), 129)
+        self.assertEqual(builder.os2_stylemap(specs["Bold"], True), 161)
+        for spec in builder.STYLE_SPECS:
+            self.assertTrue(
+                builder.os2_stylemap(spec, False) & builder.USE_TYPO_METRICS
+            )
+            self.assertTrue(
+                builder.os2_stylemap(spec, True) & builder.USE_TYPO_METRICS
+            )
+
     def test_output_naming_uses_spaced_family_and_safe_file_prefix(self):
         builder = load_builder()
 
@@ -121,6 +138,7 @@ class BuildSnuSproutTests(unittest.TestCase):
     def test_head_revision_distinguishes_patch_releases(self):
         builder = load_builder()
 
+        self.assertEqual(builder.VERSION, "0.6.0")
         # FontForge reads only major.minor from font.version, so it writes the
         # same head.fontRevision for 0.3.0 and 0.3.1. The builder stamps the
         # revision itself so a patch release is not mistaken for its

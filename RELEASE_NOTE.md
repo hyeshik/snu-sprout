@@ -1,14 +1,20 @@
-# SNU Sprout v0.5.0
+# SNU Sprout v0.6.0
 
 Outline release of SNU Sprout — a LINE Seed Sans KR-derived OpenType/CFF family
 that synthesizes intermediate weights and companion italics from three upstream
 masters.
 
-The Latin ligatures and the other feature-driven glyphs are back. Every OTF
-changed, so re-install rather than relying on a font cache: the version moves to
-`0.5` precisely so caches and font managers can tell the two builds apart.
+Every OTF now uses the shared SNU family version scheme: OpenType name ID 5 is
+`Version 0.6.0`, and the numeric `head.fontRevision` field is `0.6`.
 
-## New in 0.5.0
+## New in 0.6.0
+
+- **Unified distribution:** the release ZIP has a flat root containing only
+  the 12 OTF files, `LICENSE.txt`, and `LICENSE-LINESeedSansKR.txt`.
+- **Unified version metadata:** the font name record, numeric revision, and
+  release asset all derive from version `0.6.0`.
+
+## Included from 0.5.0
 
 - **`fi`, `fl`, `ff`, `ffi`, and `ffl` ligate again.** The FontForge port
   deleted every glyph the `cmap` could not reach, and the five Latin ligatures
@@ -46,7 +52,7 @@ kerning is untouched.
 FontForge reads only the major and minor components of the version it is handed,
 so it wrote the same `head.fontRevision` for 0.3.0, 0.3.1, and 0.3.2. The builder
 stamps `head.fontRevision` itself since 0.4.0, and refuses a version it cannot
-encode uniquely instead of shipping a colliding one. This release reports `0.5`.
+encode uniquely instead of shipping a colliding one. This release reports `0.6`.
 
 ### Family name
 
@@ -54,17 +60,17 @@ The family was renamed from `SNU Sprout Sans` to **`SNU Sprout`** in 0.3.0, and
 no backward-compatible aliases are kept. Anything that selects the old name will
 not find it:
 
-| | 0.1.2 | 0.5.0 |
+| | 0.1.2 | 0.6.0 |
 |---|---|---|
 | Family name | `SNU Sprout Sans` | `SNU Sprout` |
 | PostScript prefix | `SNUSproutSans` | `SNUSprout` |
 | Files | `SNUSproutSans-Regular.otf` | `SNUSprout-Regular.otf` |
-| Release asset | `SNUSproutSans.zip` | `SNUSprout-0.5.0.zip` |
+| Release asset | `SNUSproutSans.zip` | `SNUSprout-0.6.0.zip` |
 
 ## What's in the build
 
-The release asset is `SNUSprout-0.5.0.zip` and contains 12 static OTF files plus
-`README.md`:
+The release asset is `SNUSprout-0.6.0.zip` and contains 12 static OTF files plus
+the SNU Sprout and LINE Seed Sans KR license texts at the ZIP root:
 
 - **Upright**: Thin, Light, Regular, Medium, Bold, ExtraBold
 - **Italic**: ThinItalic, LightItalic, RegularItalic, MediumItalic, BoldItalic,
