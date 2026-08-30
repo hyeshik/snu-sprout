@@ -1,6 +1,8 @@
 import importlib.util
 import pathlib
+import tempfile
 import unittest
+import zipfile
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -61,6 +63,11 @@ class BuildSnuSproutTests(unittest.TestCase):
             builder.DEFAULT_SOURCE_ZIP_URL,
             "https://seed.line.me/src/images/fonts/LINE_Seed_Sans_KR.zip",
         )
+        self.assertEqual(
+            builder.DEFAULT_EN_SOURCE_ZIP_URL,
+            "https://seed.line.me/src/images/fonts/LINE_Seed_Sans_EN.zip",
+        )
+        self.assertEqual(builder.EN_EXTRABOLD_FILENAME, "LINESeedSans_XBd.otf")
         self.assertEqual(builder.DEFAULT_OUTPUT_DIR, "instance_otf")
 
     def test_style_matrix_keeps_current_sprout_weight_model(self):
@@ -72,23 +79,53 @@ class BuildSnuSproutTests(unittest.TestCase):
             ["Thin", "Light", "Regular", "Medium", "Bold", "ExtraBold"],
         )
         self.assertEqual(specs["Thin"].source_label, "Thin")
-        self.assertEqual(specs["Thin"].synthetic_weight_steps, 0)
+        self.assertIsNone(builder.style_interpolation_amount(specs["Thin"]))
         self.assertEqual(specs["Light"].source_label, "Thin")
-        self.assertEqual(specs["Light"].synthetic_weight_steps, 1)
+        self.assertEqual(specs["Light"].lower_label, "Thin")
+        self.assertEqual(specs["Light"].upper_label, "Regular")
+        self.assertAlmostEqual(
+            builder.style_interpolation_amount(specs["Light"]), 1 / 3
+        )
         self.assertEqual(specs["Regular"].source_label, "Regular")
-        self.assertEqual(specs["Regular"].synthetic_weight_steps, 0)
+        self.assertIsNone(builder.style_interpolation_amount(specs["Regular"]))
         self.assertEqual(specs["Medium"].source_label, "Regular")
-        self.assertEqual(specs["Medium"].synthetic_weight_steps, 1)
+        self.assertEqual(specs["Medium"].lower_label, "Regular")
+        self.assertEqual(specs["Medium"].upper_label, "Bold")
+        self.assertAlmostEqual(
+            builder.style_interpolation_amount(specs["Medium"]), 1 / 3
+        )
         self.assertEqual(specs["Bold"].source_label, "Bold")
-        self.assertEqual(specs["Bold"].synthetic_weight_steps, 0)
+        self.assertIsNone(builder.style_interpolation_amount(specs["Bold"]))
         self.assertEqual(specs["ExtraBold"].source_label, "Bold")
-        self.assertEqual(specs["ExtraBold"].synthetic_weight_steps, 1)
+        self.assertEqual(specs["ExtraBold"].lower_label, "Regular")
+        self.assertEqual(specs["ExtraBold"].upper_label, "Bold")
+        self.assertAlmostEqual(
+            builder.style_interpolation_amount(specs["ExtraBold"]), 2.0
+        )
+        self.assertAlmostEqual(
+            builder.style_interpolation_amount(specs["ExtraBold"], 1.975),
+            1.975,
+        )
 
-    def test_fontforge_weight_synthesis_never_uses_negative_steps(self):
+    def test_interpolation_helpers_follow_the_master_axis(self):
         builder = load_builder()
 
-        self.assertTrue(
-            all(spec.synthetic_weight_steps >= 0 for spec in builder.STYLE_SPECS)
+        self.assertEqual(builder.interpolate_number(100, 160, 1 / 3), 120)
+        self.assertEqual(builder.interpolate_advance_width(500, 560, 2), 620)
+        self.assertEqual(builder.interpolate_advance_width(591, 275, 2), 275)
+        with self.assertRaises(ValueError):
+            builder.interpolate_advance_width(100, -100, 0.75)
+        self.assertEqual(
+            builder.interpolate_bounds(
+                (10, -20, 110, 220),
+                (4, -26, 128, 232),
+                1 / 3,
+            ),
+            (8, -22, 116, 224),
+        )
+        self.assertEqual(
+            builder.bounds_error((8, -22, 116, 224), (8, -22, 116, 224)),
+            0,
         )
 
     def test_stylemap_preserves_upstream_typographic_metrics(self):
@@ -124,6 +161,7 @@ class BuildSnuSproutTests(unittest.TestCase):
 
         args = builder.build_parser().parse_args([])
         self.assertEqual(args.source_zip_url, builder.DEFAULT_SOURCE_ZIP_URL)
+        self.assertEqual(args.en_source_zip_url, builder.DEFAULT_EN_SOURCE_ZIP_URL)
         self.assertFalse(args.upright_only)
         self.assertFalse(args.italic_only)
 
@@ -135,10 +173,48 @@ class BuildSnuSproutTests(unittest.TestCase):
             "https://example.test/LINE_Seed_Sans_KR.zip",
         )
 
+        args = builder.build_parser().parse_args(
+            ["--en-source-zip-url", "https://example.test/LINE_Seed_Sans_EN.zip"]
+        )
+        self.assertEqual(
+            args.en_source_zip_url,
+            "https://example.test/LINE_Seed_Sans_EN.zip",
+        )
+
+    def test_source_extraction_selects_only_the_requested_en_desktop_otf(self):
+        builder = load_builder()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            archive_path = root / "LINE_Seed_Sans_EN.zip"
+            with zipfile.ZipFile(archive_path, "w") as archive:
+                archive.writestr(
+                    "LINE_Seed/Desktop/OTF/LINESeedSans_XBd.otf", b"desktop"
+                )
+                archive.writestr(
+                    "LINE_Seed/App/OTF/LINESeedSans_A_XBd.otf", b"app"
+                )
+
+            source_dir = root / "original"
+            builder.extract_source_fonts(
+                archive_path,
+                source_dir,
+                (builder.EN_EXTRABOLD_FILENAME,),
+            )
+
+            self.assertEqual(
+                (source_dir / builder.EN_EXTRABOLD_FILENAME).read_bytes(),
+                b"desktop",
+            )
+            self.assertEqual(
+                list(source_dir.iterdir()),
+                [source_dir / builder.EN_EXTRABOLD_FILENAME],
+            )
+
     def test_head_revision_distinguishes_patch_releases(self):
         builder = load_builder()
 
-        self.assertEqual(builder.VERSION, "0.6.0")
+        self.assertEqual(builder.VERSION, "0.7.0")
         # FontForge reads only major.minor from font.version, so it writes the
         # same head.fontRevision for 0.3.0 and 0.3.1. The builder stamps the
         # revision itself so a patch release is not mistaken for its

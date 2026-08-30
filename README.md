@@ -1,15 +1,18 @@
 # SNU Sprout
 
-SNU Sprout is a LINE Seed Sans KR-derived OpenType build. The build script
-downloads the LINE Seed Sans KR source package when needed, loads the three
-upstream OTF masters with FontForge, synthesizes intermediate weights, and
-generates upright and italic OTF instances.
+SNU Sprout is an OpenType build derived from LINE Seed Sans KR and LINE Seed
+Sans. The build script downloads both source packages when needed, loads the
+three Korean OTF masters with FontForge, interpolates the complete weight
+sequence, grafts native LINE Seed EN glyphs into ExtraBold, and generates
+upright and italic OTF instances.
 
 The italic styles keep CJK glyphs upright and apply a synthetic 10 degree slant
 to non-CJK glyphs, then add a kerning guard so slanted glyphs cannot collide
-with the upright CJK glyph that follows. Intermediate weights are synthesized
-from the nearest source master using a FontForge outline weight step derived
-from the source master widths.
+with the upright CJK glyph that follows. Intermediate weights sit on the same
+axis as the source masters: outline bounds, advance widths, side
+bearings, and kerning are interpolated at the requested weight. Compatible
+outlines are interpolated point for point; incompatible outlines use a
+master-bounded fallback fitted to the same size and weight progression.
 
 ## Requirements
 
@@ -48,10 +51,11 @@ Build the complete family:
 make build
 ```
 
-The first build downloads:
+The first complete build downloads:
 
 ```text
 https://seed.line.me/src/images/fonts/LINE_Seed_Sans_KR.zip
+https://seed.line.me/src/images/fonts/LINE_Seed_Sans_EN.zip
 ```
 
 The downloaded archive is stored under `vendor/downloads/`, the source OTFs are
@@ -71,7 +75,7 @@ make distribution
 ```
 
 The ZIP has no wrapper directory. Its root contains only the 12 OTF files,
-`LICENSE.txt`, and `LICENSE-LINESeedSansKR.txt`; the README, release notes, and
+`LICENSE.txt`, and `LICENSE-LINESeed.txt`; the README, release notes, and
 other project files are not distributed.
 
 Remove generated fonts and downloaded source files:
@@ -85,25 +89,42 @@ make clean
 The default build creates upright and italic variants for these weights:
 
 - Thin: LINE Seed Sans KR Thin
-- Light: LINE Seed Sans KR Thin plus one synthetic weight step
+- Light: one-third of the Thin-to-Regular interval (weight 300)
 - Regular: LINE Seed Sans KR Regular
-- Medium: LINE Seed Sans KR Regular plus one synthetic weight step
+- Medium: one-third of the Regular-to-Bold interval (weight 500)
 - Bold: LINE Seed Sans KR Bold
-- ExtraBold: LINE Seed Sans KR Bold plus one synthetic weight step
+- ExtraBold: native LINE Seed EN ExtraBold for its shared non-CJK glyphs;
+  remaining glyphs continue the Regular-to-Bold progression at the position
+  measured from matching KR and EN Latin outlines
 
 This produces 12 OTF files in total.
+
+The official LINE Seed EN desktop package contains Thin (250), Regular (400),
+Bold (700), ExtraBold (800), and Heavy (900). It has no native Light (300) or
+Medium (500), so those two weights remain true interpolation instances rather
+than borrowing a nearby EN weight. ExtraBold is the one generated SNU Sprout
+weight with an exact EN counterpart.
 
 ## Build Details
 
 Default build settings:
 
 - Italic slant angle for non-CJK glyphs: `10deg`
-- Synthetic weight reference glyph: `I`
+- Fallback weight-step reference glyph: `I`
+- Intermediate horizontal metrics and kerning: linear interpolation by source GID
+- Intermediate outline bounds: linear interpolation between source masters
+- ExtraBold axis calibration: median matching-point motion across Latin letters
+  and digits; the current official sources resolve to `2.0` on the KR
+  Regular-to-Bold interval
+- ExtraBold shared non-CJK outlines, advances, side bearings, and kerning:
+  native LINE Seed EN ExtraBold values
+- Incompatible-outline fallback: nearest master, fitted to interpolated bounds
+  and master-bounded ink weight
 - Italic collision guard ink clearance: `30` units at UPM 1000
 - Italic collision guard geometry bucket: `5` units
 - Typographic line metrics: preserve LINE Seed Sans KR's `USE_TYPO_METRICS` flag
-- Font version: `0.6.0` (`head.fontRevision == 0.6`)
-- Package name: `SNUSprout-0.6.0.zip`
+- Font version: `0.7.0` (`head.fontRevision == 0.7`)
+- Package name: `SNUSprout-0.7.0.zip`
 
 The package name is derived from the `VERSION` constant in
 `build_snu_sprout.py`, which is the single source of truth for the font version.
@@ -133,7 +154,7 @@ lookups that produce them, and the Latin ligatures stop forming.
 
 Each one is named for its inputs — `uni0066_uni0069` for fi, `uni0021.locl` for
 the localized exclamation mark — which keeps the name registry-neutral and
-records the codepoints behind an unencoded glyph. Synthetic weighting and the
+records the codepoints behind an unencoded glyph. Weight interpolation and the
 italic slant read those codepoints back, so a substituted glyph is weighted and
 sheared exactly like the glyphs it replaces, and the italic collision guard
 covers it as well.
@@ -192,9 +213,12 @@ Use an existing local source directory without downloading:
 
 ```sh
 fontforge -lang=py -script build_snu_sprout.py \
-  --source-dir path/to/LINESeedKR/fonts \
+  --source-dir path/to/source-fonts \
   --no-download
 ```
+
+For a complete local build that directory must contain `LINESeedKR-Th.otf`,
+`LINESeedKR-Rg.otf`, `LINESeedKR-Bd.otf`, and `LINESeedSans_XBd.otf`.
 
 Override output and slant settings:
 
@@ -207,7 +231,7 @@ fontforge -lang=py -script build_snu_sprout.py \
 The same options can be passed through `make` variables:
 
 ```sh
-make distribution SOURCE_DIR=path/to/LINESeedKR/fonts BUILD_FLAGS=--no-download
+make distribution SOURCE_DIR=path/to/source-fonts BUILD_FLAGS=--no-download
 ```
 
 ## GitHub Actions
@@ -224,8 +248,8 @@ asset.
 Create and push a release tag:
 
 ```sh
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.7.0
+git push origin v0.7.0
 ```
 
 Reusing an existing release tag is intentionally treated as an error. Use a new
@@ -239,7 +263,7 @@ version tag for each published package.
 - `add_italic_cjk_guard.py`: italic-to-upright-CJK collision guard, applied by the builder
 - `scripts/package_distribution.py`: creates the flat OTF-and-license release ZIP
 - `LICENSE`: SNU Sprout license and upstream copyright notice
-- `licenses/LINESeedSansKR.txt`: LINE Seed Sans KR source license
+- `licenses/LINESeed.txt`: upstream LINE Seed font license
 - `tests/`: unit tests for pure helper logic
 - `.gitignore`: excludes source fonts and generated artifacts
 - `original/`: expected location of upstream source fonts, not tracked
@@ -255,13 +279,18 @@ version tag for each published package.
   behavior so the large fallback `hhea` box does not shift text in layouts
   that center font line boxes.
 - Missing source OTFs are fetched automatically from the upstream LINE Seed KR
-  ZIP unless `--no-download` is used.
+  and EN ZIPs unless `--no-download` is used. An ExtraBold-only build needs the
+  EN source; builds that do not select ExtraBold do not.
 - Italic outputs are synthetic obliques: non-CJK glyphs are slanted by the
   builder, while glyphs classified as Han, Hangul, Hiragana, Katakana, or
   Bopomofo remain upright.
 - Italic outputs also carry a generated kerning guard that keeps slanted glyphs
   from colliding with the following upright CJK glyph.
-- Synthetic outline weight is intentionally simple and reproducible; visual
-  inspection is still recommended for `Light`, `Medium`, and `ExtraBold`.
+- Light and Medium are checked glyph by glyph to keep advance width, side
+  bearing, outline bounds, and ink weight inside their adjacent masters.
+  ExtraBold uses native EN glyphs where the two families overlap. Its remaining
+  glyphs follow the Regular-to-Bold progression at the position measured from
+  corresponding Latin point motion, so the grafted Latin and generated Hangul
+  share one observed design-axis location.
 - ExtraLight is intentionally omitted because FontForge negative outline
   thinning damaged Latin capital counters and lower curves.

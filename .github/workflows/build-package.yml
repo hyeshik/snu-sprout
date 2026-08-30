@@ -43,7 +43,7 @@ jobs:
           test "$(find instance_otf -maxdepth 1 -name 'SNUSprout-*.otf' | wc -l)" -eq 12
           test -f "$PACKAGE_ZIP"
           test "$(unzip -Z1 "$PACKAGE_ZIP" | grep -Ec '^[^/]+$')" -eq 14
-          test -z "$(unzip -Z1 "$PACKAGE_ZIP" | grep -Ev '^(SNUSprout-[A-Za-z]+\.otf|LICENSE(-LINESeedSansKR)?\.txt)$')"
+          test -z "$(unzip -Z1 "$PACKAGE_ZIP" | grep -Ev '^(SNUSprout-[A-Za-z]+\.otf|LICENSE(-LINESeed)?\.txt)$')"
 
       - name: Upload package artifact
         uses: actions/upload-artifact@v4
@@ -63,6 +63,9 @@ jobs:
       contents: write
 
     steps:
+      - name: Check out release notes
+        uses: actions/checkout@v4
+
       - name: Download package artifact
         uses: actions/download-artifact@v4
         with:
@@ -77,5 +80,5 @@ jobs:
             dist/SNUSprout-*.zip \
             --repo "${GITHUB_REPOSITORY}" \
             --title "${GITHUB_REF_NAME#v}" \
-            --generate-notes \
+            --notes-file RELEASE_NOTE.md \
             --verify-tag

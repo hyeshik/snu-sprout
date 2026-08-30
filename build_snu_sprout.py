@@ -5,6 +5,7 @@ import argparse
 import contextlib
 import math
 import os
+import statistics
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -14,8 +15,9 @@ from typing import Iterable, Iterator, NamedTuple
 FAMILY_NAME = "SNU Sprout"
 POSTSCRIPT_FAMILY_NAME = "SNUSprout"
 FILE_FAMILY_NAME = POSTSCRIPT_FAMILY_NAME
-VERSION = "0.6.0"
+VERSION = "0.7.0"
 DEFAULT_SOURCE_ZIP_URL = "https://seed.line.me/src/images/fonts/LINE_Seed_Sans_KR.zip"
+DEFAULT_EN_SOURCE_ZIP_URL = "https://seed.line.me/src/images/fonts/LINE_Seed_Sans_EN.zip"
 DEFAULT_DOWNLOAD_DIR = "vendor/downloads"
 DEFAULT_SOURCE_DIR = "original"
 DEFAULT_OUTPUT_DIR = "instance_otf"
@@ -23,31 +25,54 @@ DEFAULT_ITALIC_ANGLE = 10.0
 DEFAULT_GUARD_CLEARANCE = 30
 DEFAULT_GUARD_BUCKET_SIZE = 5
 USE_TYPO_METRICS = 1 << 7
-SYNTHETIC_WEIGHT_REFERENCE_CODEPOINT = 0x49
+INTERPOLATION_REFERENCE_CODEPOINT = 0x49
+INTERPOLATION_POINT_DISTANCE_LIMIT = 100.0
+INTERPOLATION_BOUNDS_TOLERANCE = 5.0
+INTERPOLATION_AREA_TOLERANCE = 2.0
+FALLBACK_AREA_SEARCH_STEPS = 3
 UNENCODED_NAME_PREFIX = "sprout"
+EN_EXTRABOLD_FILENAME = "LINESeedSans_XBd.otf"
+EXTRABOLD_CALIBRATION_TEXT = (
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+)
+EXTRABOLD_AMOUNT_MIN = 1.5
+EXTRABOLD_AMOUNT_MAX = 2.5
+DEFAULT_EXTRABOLD_AMOUNT = 2.0
 
 SOURCE_FILES = {
     "Thin": "LINESeedKR-Th.otf",
     "Regular": "LINESeedKR-Rg.otf",
     "Bold": "LINESeedKR-Bd.otf",
 }
-MASTER_LABELS = ("Thin", "Regular", "Bold")
+MASTER_WEIGHTS = {
+    "Thin": 250,
+    "Regular": 400,
+    "Bold": 700,
+}
 
 
 class StyleSpec(NamedTuple):
     style: str
     weight: int
     source_label: str
-    synthetic_weight_steps: int = 0
+    lower_label: str | None = None
+    upper_label: str | None = None
+
+
+class InterpolationStats(NamedTuple):
+    matched: int
+    direct: int
+    fallback: int
+    missing: int
 
 
 STYLE_SPECS = (
     StyleSpec("Thin", 250, "Thin"),
-    StyleSpec("Light", 300, "Thin", 1),
+    StyleSpec("Light", 300, "Thin", "Thin", "Regular"),
     StyleSpec("Regular", 400, "Regular"),
-    StyleSpec("Medium", 500, "Regular", 1),
+    StyleSpec("Medium", 500, "Regular", "Regular", "Bold"),
     StyleSpec("Bold", 700, "Bold"),
-    StyleSpec("ExtraBold", 800, "Bold", 1),
+    StyleSpec("ExtraBold", 800, "Bold", "Regular", "Bold"),
 )
 
 
@@ -140,6 +165,210 @@ def stamp_font_revision(output_path: Path) -> float:
     return revision
 
 
+def gpos_xadvance_pairs(font) -> dict[tuple[int, int], int]:
+    if "GPOS" not in font:
+        return {}
+
+    glyph_order = font.getGlyphOrder()
+    glyph_ids = {name: index for index, name in enumerate(glyph_order)}
+    pairs: dict[tuple[int, int], int] = {}
+    for lookup in font["GPOS"].table.LookupList.Lookup:
+        if lookup.LookupType != 2:
+            continue
+        for subtable in lookup.SubTable:
+            if subtable.Format == 1:
+                for first, pair_set in zip(
+                    subtable.Coverage.glyphs, subtable.PairSet
+                ):
+                    for record in pair_set.PairValueRecord:
+                        value = (
+                            getattr(record.Value1, "XAdvance", 0)
+                            if record.Value1 is not None
+                            else 0
+                        )
+                        if not value:
+                            continue
+                        key = (glyph_ids[first], glyph_ids[record.SecondGlyph])
+                        pairs[key] = pairs.get(key, 0) + value
+            elif subtable.Format == 2:
+                class2_glyphs: dict[int, list[str]] = {}
+                for glyph_name, class_index in subtable.ClassDef2.classDefs.items():
+                    class2_glyphs.setdefault(class_index, []).append(glyph_name)
+                for first in subtable.Coverage.glyphs:
+                    class1 = subtable.ClassDef1.classDefs.get(first, 0)
+                    row = subtable.Class1Record[class1]
+                    for class2, record in enumerate(row.Class2Record):
+                        value = (
+                            getattr(record.Value1, "XAdvance", 0)
+                            if record.Value1 is not None
+                            else 0
+                        )
+                        if not value:
+                            continue
+                        if class2 == 0:
+                            seconds = [
+                                name
+                                for name in glyph_order
+                                if subtable.ClassDef2.classDefs.get(name, 0) == 0
+                            ]
+                        else:
+                            seconds = class2_glyphs.get(class2, [])
+                        for second in seconds:
+                            key = (glyph_ids[first], glyph_ids[second])
+                            pairs[key] = pairs.get(key, 0) + value
+    return pairs
+
+
+def gpos_language_systems(font) -> list[tuple[str, str]]:
+    if "GPOS" not in font:
+        return [("DFLT", "dflt")]
+    systems = []
+    for script_record in font["GPOS"].table.ScriptList.ScriptRecord:
+        script = script_record.Script
+        if script.DefaultLangSys is not None:
+            systems.append((script_record.ScriptTag, "dflt"))
+        systems.extend(
+            (script_record.ScriptTag, language.LangSysTag)
+            for language in script.LangSysRecord
+        )
+    return systems or [("DFLT", "dflt")]
+
+
+def interpolate_gpos_kerning(
+    output_path: Path,
+    lower_path: Path,
+    upper_path: Path,
+    amount: float,
+    graft_path: Path | None = None,
+    graft_name_map: dict[str, str] | None = None,
+) -> tuple[int, int]:
+    """Interpolate metrics/kerning, then restore grafted source layout values."""
+    from fontTools.feaLib.builder import addOpenTypeFeaturesFromString
+    from fontTools.ttLib import TTFont
+
+    lower = TTFont(str(lower_path))
+    upper = TTFont(str(upper_path))
+    output = TTFont(str(output_path))
+    graft = TTFont(str(graft_path)) if graft_path is not None else None
+    temporary_path = output_path.with_suffix(output_path.suffix + ".kern-tmp")
+    try:
+        if not (
+            len(lower.getGlyphOrder())
+            == len(upper.getGlyphOrder())
+            == len(output.getGlyphOrder())
+        ):
+            raise ValueError("Cannot interpolate kerning across different glyph sets")
+
+        lower_order = lower.getGlyphOrder()
+        upper_order = upper.getGlyphOrder()
+        output_order = output.getGlyphOrder()
+        for glyph_id, output_name in enumerate(output_order):
+            lower_advance, lower_lsb = lower["hmtx"].metrics[lower_order[glyph_id]]
+            upper_advance, upper_lsb = upper["hmtx"].metrics[upper_order[glyph_id]]
+            output["hmtx"].metrics[output_name] = (
+                interpolate_advance_width(lower_advance, upper_advance, amount),
+                round(interpolate_number(lower_lsb, upper_lsb, amount)),
+            )
+
+        lower_pairs = gpos_xadvance_pairs(lower)
+        upper_pairs = gpos_xadvance_pairs(upper)
+        interpolated_pairs = {
+            pair: round(
+                interpolate_number(
+                    lower_pairs.get(pair, 0), upper_pairs.get(pair, 0), amount
+                )
+            )
+            for pair in lower_pairs.keys() | upper_pairs.keys()
+        }
+        interpolated_pairs = {
+            pair: value for pair, value in interpolated_pairs.items() if value
+        }
+
+        glyph_order = output.getGlyphOrder()
+        grafted_pairs = 0
+        if graft is not None and graft_name_map:
+            output_gids = {name: gid for gid, name in enumerate(glyph_order)}
+            graft_order = graft.getGlyphOrder()
+            graft_gids = {name: gid for gid, name in enumerate(graft_order)}
+            output_to_graft_gid = {
+                output_gids[output_name]: graft_gids[graft_name]
+                for output_name, graft_name in graft_name_map.items()
+                if output_name in output_gids and graft_name in graft_gids
+            }
+            graft_to_output_gid = {
+                graft_gid: output_gid
+                for output_gid, graft_gid in output_to_graft_gid.items()
+            }
+
+            for output_gid, graft_gid in output_to_graft_gid.items():
+                output_name = glyph_order[output_gid]
+                graft_name = graft_order[graft_gid]
+                output["hmtx"].metrics[output_name] = graft["hmtx"].metrics[graft_name]
+
+            grafted_output_gids = set(output_to_graft_gid)
+            interpolated_pairs = {
+                pair: value
+                for pair, value in interpolated_pairs.items()
+                if not (
+                    pair[0] in grafted_output_gids
+                    and pair[1] in grafted_output_gids
+                )
+            }
+            for (left_gid, right_gid), value in gpos_xadvance_pairs(graft).items():
+                output_left = graft_to_output_gid.get(left_gid)
+                output_right = graft_to_output_gid.get(right_gid)
+                if output_left is None or output_right is None:
+                    continue
+                interpolated_pairs[(output_left, output_right)] = value
+                grafted_pairs += 1
+
+        feature_lines = [
+            f"languagesystem {script} {language};"
+            for script, language in gpos_language_systems(output)
+        ]
+        feature_lines.extend(
+            [
+                "feature kern {",
+                "  lookup InterpolatedKern {",
+                "    lookupflag IgnoreMarks;",
+            ]
+        )
+        feature_lines.extend(
+            "    pos \\{left} \\{right} {value};".format(
+                left=glyph_order[left_gid],
+                right=glyph_order[right_gid],
+                value=value,
+            )
+            for (left_gid, right_gid), value in sorted(interpolated_pairs.items())
+        )
+        feature_lines.extend(
+            [
+                "  } InterpolatedKern;",
+                "} kern;",
+            ]
+        )
+
+        if "GPOS" in output:
+            del output["GPOS"]
+        addOpenTypeFeaturesFromString(
+            output,
+            "\n".join(feature_lines),
+            tables=["GPOS"],
+        )
+        if gpos_xadvance_pairs(output) != interpolated_pairs:
+            raise ValueError("Generated kerning does not match master interpolation")
+        output.save(str(temporary_path))
+    finally:
+        lower.close()
+        upper.close()
+        output.close()
+        if graft is not None:
+            graft.close()
+
+    os.replace(temporary_path, output_path)
+    return len(interpolated_pairs), grafted_pairs
+
+
 def style_name(style: str, italic: bool) -> str:
     return f"{style} Italic" if italic else style
 
@@ -154,7 +383,10 @@ def output_filename(style: str, italic: bool) -> str:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Build SNU Sprout from LINE Seed Sans KR OTF masters."
+        description=(
+            "Build SNU Sprout from LINE Seed Sans KR masters and native "
+            "LINE Seed EN ExtraBold glyphs."
+        )
     )
     parser.add_argument(
         "styles",
@@ -173,6 +405,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Build only italic styles.",
     )
     parser.add_argument("--source-zip-url", default=DEFAULT_SOURCE_ZIP_URL)
+    parser.add_argument("--en-source-zip-url", default=DEFAULT_EN_SOURCE_ZIP_URL)
     parser.add_argument("--download-dir", default=DEFAULT_DOWNLOAD_DIR)
     parser.add_argument("--source-dir", default=DEFAULT_SOURCE_DIR)
     parser.add_argument("--output-dir", default=DEFAULT_OUTPUT_DIR)
@@ -232,9 +465,11 @@ def download_zip(url: str, destination: Path) -> Path:
     return destination
 
 
-def extract_source_fonts(zip_path: Path, source_dir: Path) -> None:
+def extract_source_fonts(
+    zip_path: Path, source_dir: Path, wanted_filenames: Iterable[str]
+) -> None:
     source_dir.mkdir(parents=True, exist_ok=True)
-    wanted = set(SOURCE_FILES.values())
+    wanted = set(wanted_filenames)
     with zipfile.ZipFile(zip_path) as archive:
         members = {
             Path(name).name: name
@@ -272,7 +507,7 @@ def ensure_source_fonts(args: argparse.Namespace) -> dict[str, Path]:
     if missing:
         archive_path = Path(args.download_dir) / "LINE_Seed_Sans_KR.zip"
         download_zip(args.source_zip_url, archive_path)
-        extract_source_fonts(archive_path, source_dir)
+        extract_source_fonts(archive_path, source_dir, SOURCE_FILES.values())
 
     missing = [path.name for path in masters.values() if not path.is_file()]
     if missing:
@@ -281,6 +516,22 @@ def ensure_source_fonts(args: argparse.Namespace) -> dict[str, Path]:
             + ", ".join(str(source_dir / filename) for filename in missing)
         )
     return masters
+
+
+def ensure_en_extrabold(args: argparse.Namespace) -> Path:
+    source_dir = Path(args.source_dir)
+    source_path = source_dir / EN_EXTRABOLD_FILENAME
+    if source_path.is_file():
+        return source_path
+    if args.no_download:
+        raise SystemExit(f"Missing source font: {source_path}")
+
+    archive_path = Path(args.download_dir) / "LINE_Seed_Sans_EN.zip"
+    download_zip(args.en_source_zip_url, archive_path)
+    extract_source_fonts(archive_path, source_dir, (EN_EXTRABOLD_FILENAME,))
+    if not source_path.is_file():
+        raise SystemExit(f"Missing source font after download: {source_path}")
+    return source_path
 
 
 def is_cjk_codepoint(codepoint: int) -> bool:
@@ -295,18 +546,60 @@ def italic_slope(angle: float = DEFAULT_ITALIC_ANGLE) -> float:
     return math.tan(math.radians(angle))
 
 
-def derive_synthetic_weight_width(master_widths: list[float]) -> int:
-    if len(master_widths) < 2:
-        return 0
-    deltas = [
-        master_widths[index + 1] - master_widths[index]
-        for index in range(len(master_widths) - 1)
-    ]
-    positive_deltas = [delta for delta in deltas if delta > 0]
-    if not positive_deltas:
-        return 0
-    average_delta = sum(positive_deltas) / len(positive_deltas)
-    return max(1, round(average_delta / 3))
+def interpolate_number(lower: float, upper: float, amount: float) -> float:
+    return lower + amount * (upper - lower)
+
+
+def interpolate_advance_width(lower: float, upper: float, amount: float) -> int:
+    """Interpolate an advance, retaining the heavy master on invalid extrapolation."""
+    candidate = round(interpolate_number(lower, upper, amount))
+    if candidate >= 0:
+        return candidate
+    if amount > 1 and upper >= 0:
+        return round(upper)
+    raise ValueError(f"Interpolated advance width is negative: {candidate}")
+
+
+def interpolated_advance_widths(
+    lower_path: Path, upper_path: Path, amount: float
+) -> list[int]:
+    """Read authoritative source advances and interpolate them by stable GID."""
+    from fontTools.ttLib import TTFont
+
+    lower = TTFont(str(lower_path))
+    upper = TTFont(str(upper_path))
+    try:
+        lower_order = lower.getGlyphOrder()
+        upper_order = upper.getGlyphOrder()
+        if len(lower_order) != len(upper_order):
+            raise ValueError("Cannot interpolate metrics across different glyph sets")
+        return [
+            interpolate_advance_width(
+                lower["hmtx"].metrics[lower_name][0],
+                upper["hmtx"].metrics[upper_name][0],
+                amount,
+            )
+            for lower_name, upper_name in zip(lower_order, upper_order)
+        ]
+    finally:
+        lower.close()
+        upper.close()
+
+
+def style_interpolation_amount(
+    spec: StyleSpec, extra_bold_amount: float = DEFAULT_EXTRABOLD_AMOUNT
+) -> float | None:
+    if spec.lower_label is None and spec.upper_label is None:
+        return None
+    if spec.lower_label is None or spec.upper_label is None:
+        raise ValueError(f"Incomplete interpolation masters for {spec.style}")
+    lower_weight = MASTER_WEIGHTS[spec.lower_label]
+    upper_weight = MASTER_WEIGHTS[spec.upper_label]
+    if lower_weight >= upper_weight:
+        raise ValueError(f"Invalid interpolation interval for {spec.style}")
+    if spec.style == "ExtraBold":
+        return extra_bold_amount
+    return (spec.weight - lower_weight) / (upper_weight - lower_weight)
 
 
 def open_source_font(fontforge, path: Path, quiet: bool):
@@ -489,6 +782,35 @@ def neutralize_unencoded_glyph_names(font) -> int:
     return renamed
 
 
+def neutralize_source_glyph_names(font, quiet: bool) -> dict[str, str]:
+    """Neutralize a graft source while retaining each glyph's original name."""
+    original_by_name = {}
+    with suppress_c_stderr(quiet):
+        for glyph in list(font.glyphs()):
+            codepoint = glyph.unicode
+            if codepoint is None or codepoint < 0:
+                continue
+            original_name = glyph.glyphname
+            glyph.glyphname = agl_glyph_name(codepoint)
+            original_by_name[glyph.glyphname] = original_name
+
+        derived = derived_glyph_names(font)
+        taken = {glyph.glyphname for glyph in font.glyphs()}
+        for glyph in list(font.glyphs()):
+            if glyph.unicode is not None and glyph.unicode >= 0:
+                continue
+            if glyph.glyphname == ".notdef":
+                continue
+            original_name = glyph.glyphname
+            preferred = derived.get(original_name)
+            if preferred is None:
+                preferred = UNENCODED_NAME_PREFIX + original_name.rsplit(".", 1)[-1]
+            taken.discard(original_name)
+            glyph.glyphname = unique_glyph_name(preferred, taken)
+            original_by_name[glyph.glyphname] = original_name
+    return original_by_name
+
+
 def glyph_outline_width(font, codepoint: int) -> float:
     for glyph in font.glyphs():
         if glyph.unicode == codepoint:
@@ -497,32 +819,401 @@ def glyph_outline_width(font, codepoint: int) -> float:
     return 0
 
 
-def derive_synthetic_weight_width_from_sources(
-    fontforge, masters: dict[str, Path], quiet: bool
-) -> int:
-    widths = []
-    for label in MASTER_LABELS:
-        font = open_source_font(fontforge, masters[label], quiet)
-        try:
-            flatten_cid_font(font, quiet)
-            widths.append(glyph_outline_width(font, SYNTHETIC_WEIGHT_REFERENCE_CODEPOINT))
-        finally:
+def glyph_identity(glyph) -> tuple[str, int | str]:
+    codepoint = glyph.unicode
+    if codepoint is not None and codepoint >= 0:
+        return ("unicode", codepoint)
+    return ("name", glyph.glyphname)
+
+
+def glyph_map(font) -> dict[tuple[str, int | str], object]:
+    return {glyph_identity(glyph): glyph for glyph in font.glyphs()}
+
+
+def decompose_references(font) -> None:
+    for glyph in font.glyphs():
+        if glyph.references:
+            glyph.unlinkRef()
+
+
+def layer_signature(layer) -> tuple[tuple[bool, tuple[bool, ...]], ...]:
+    return tuple(
+        (contour.closed, tuple(point.on_curve for point in contour))
+        for contour in layer
+    )
+
+
+def max_point_distance(left_layer, right_layer) -> float:
+    distances = (
+        math.hypot(left.x - right.x, left.y - right.y)
+        for left_contour, right_contour in zip(left_layer, right_layer)
+        for left, right in zip(left_contour, right_contour)
+    )
+    return max(distances, default=0.0)
+
+
+def latin_axis_coordinate_ratios(
+    regular_font, bold_font, extra_bold_font
+) -> list[float]:
+    """Measure where native EN ExtraBold lies on the KR Latin design axis."""
+    regular_glyphs = glyph_map(regular_font)
+    bold_glyphs = glyph_map(bold_font)
+    extra_bold_glyphs = glyph_map(extra_bold_font)
+    ratios = []
+    for character in EXTRABOLD_CALIBRATION_TEXT:
+        identity = ("unicode", ord(character))
+        glyphs = (
+            regular_glyphs.get(identity),
+            bold_glyphs.get(identity),
+            extra_bold_glyphs.get(identity),
+        )
+        if any(glyph is None for glyph in glyphs):
+            continue
+        layers = tuple(glyph.foreground for glyph in glyphs)
+        if not (
+            layer_signature(layers[0])
+            == layer_signature(layers[1])
+            == layer_signature(layers[2])
+        ):
+            continue
+        for contours in zip(*layers):
+            for points in zip(*contours):
+                for coordinate in ("x", "y"):
+                    regular_value = getattr(points[0], coordinate)
+                    master_delta = getattr(points[1], coordinate) - regular_value
+                    if abs(master_delta) < 1:
+                        continue
+                    target_delta = getattr(points[2], coordinate) - regular_value
+                    ratios.append(target_delta / master_delta)
+    return ratios
+
+
+def calibrate_extra_bold_amount(
+    fontforge,
+    masters: dict[str, Path],
+    en_extra_bold_path: Path,
+    quiet: bool,
+) -> float:
+    """Derive the 800 extrapolation amount from matching Latin point motion."""
+    fonts = [
+        open_source_font(fontforge, masters["Regular"], quiet),
+        open_source_font(fontforge, masters["Bold"], quiet),
+        open_source_font(fontforge, en_extra_bold_path, quiet),
+    ]
+    try:
+        flatten_cid_font(fonts[0], quiet)
+        flatten_cid_font(fonts[1], quiet)
+        for font in fonts:
+            decompose_references(font)
+        ratios = latin_axis_coordinate_ratios(*fonts)
+    finally:
+        for font in fonts:
             font.close()
-    return derive_synthetic_weight_width(widths)
+
+    if not ratios:
+        raise ValueError("No compatible Latin outlines could calibrate ExtraBold")
+    amount = statistics.median(ratios)
+    if not EXTRABOLD_AMOUNT_MIN <= amount <= EXTRABOLD_AMOUNT_MAX:
+        raise ValueError(
+            f"Native EN ExtraBold is outside the expected Latin axis: {amount:.4f}"
+        )
+    return amount
 
 
-def apply_synthetic_weight(font, offset_width: int, quiet: bool) -> int:
-    if not offset_width:
-        return 0
+def graft_english_glyphs(
+    fontforge, output_font, source_path: Path, quiet: bool
+) -> tuple[dict[str, str], int]:
+    """Replace shared non-CJK glyphs with native LINE Seed EN outlines."""
+    from fontTools.pens.boundsPen import BoundsPen
+    from fontTools.ttLib import TTFont
 
-    changed = 0
+    source_font = open_source_font(fontforge, source_path, quiet)
+    source_ttfont = TTFont(str(source_path))
+    try:
+        decompose_references(source_font)
+        original_by_name = neutralize_source_glyph_names(source_font, quiet)
+        source_by_name = {glyph.glyphname: glyph for glyph in source_font.glyphs()}
+        source_glyph_set = source_ttfont.getGlyphSet()
+
+        graft_name_map = {}
+        with suppress_c_stderr(quiet):
+            for output_glyph in output_font.glyphs():
+                codepoints = glyph_name_codepoints(output_glyph.glyphname)
+                if not codepoints or min(codepoints) < 0x20 or not all(
+                    should_slant_codepoint(codepoint) for codepoint in codepoints
+                ):
+                    continue
+                source_glyph = source_by_name.get(output_glyph.glyphname)
+                if source_glyph is None:
+                    continue
+                output_glyph.foreground = source_glyph.foreground
+                original_name = original_by_name[output_glyph.glyphname]
+                bounds_pen = BoundsPen(source_glyph_set)
+                source_glyph_set[original_name].draw(bounds_pen)
+                if bounds_pen.bounds is not None:
+                    imported_bounds = source_glyph.boundingBox()
+                    output_glyph.transform(
+                        (
+                            1,
+                            0,
+                            0,
+                            1,
+                            bounds_pen.bounds[0] - imported_bounds[0],
+                            bounds_pen.bounds[1] - imported_bounds[1],
+                        )
+                    )
+                output_glyph.width = source_ttfont["hmtx"].metrics[original_name][0]
+                graft_name_map[output_glyph.glyphname] = original_name
+        return graft_name_map, len(graft_name_map)
+    finally:
+        source_font.close()
+        source_ttfont.close()
+
+
+def interpolate_bounds(
+    lower: tuple[float, float, float, float],
+    upper: tuple[float, float, float, float],
+    amount: float,
+) -> tuple[float, float, float, float]:
+    return tuple(
+        interpolate_number(lower_value, upper_value, amount)
+        for lower_value, upper_value in zip(lower, upper)
+    )
+
+
+def bounds_error(
+    actual: tuple[float, float, float, float],
+    expected: tuple[float, float, float, float],
+) -> float:
+    return max(
+        abs(actual_value - expected_value)
+        for actual_value, expected_value in zip(actual, expected)
+    )
+
+
+def layer_ink_area(layer) -> float:
+    from fontTools.pens.areaPen import AreaPen
+
+    pen = AreaPen(None)
+    layer.draw(pen)
+    return abs(pen.value)
+
+
+def safe_interpolated_layer(lower_glyph, upper_glyph, amount: float):
+    """Return a direct outline interpolation only when it is geometrically safe."""
+    lower_layer = lower_glyph.foreground
+    upper_layer = upper_glyph.foreground
+    if layer_signature(lower_layer) != layer_signature(upper_layer):
+        return None
+    if (
+        max_point_distance(lower_layer, upper_layer)
+        > INTERPOLATION_POINT_DISTANCE_LIMIT
+    ):
+        return None
+
+    layer = lower_layer.interpolateNewLayer(upper_layer, amount)
+    expected_bounds = interpolate_bounds(
+        lower_glyph.boundingBox(), upper_glyph.boundingBox(), amount
+    )
+    if bounds_error(layer.boundingBox(), expected_bounds) > INTERPOLATION_BOUNDS_TOLERANCE:
+        return None
+    if 0 <= amount <= 1:
+        lower_area = layer_ink_area(lower_layer)
+        upper_area = layer_ink_area(upper_layer)
+        interpolated_area = layer_ink_area(layer)
+        if not (
+            min(lower_area, upper_area) - INTERPOLATION_AREA_TOLERANCE
+            <= interpolated_area
+            <= max(lower_area, upper_area) + INTERPOLATION_AREA_TOLERANCE
+        ):
+            return None
+    return layer
+
+
+def fit_glyph_to_bounds(
+    glyph, target: tuple[float, float, float, float]
+) -> None:
+    current = glyph.boundingBox()
+    current_width = current[2] - current[0]
+    current_height = current[3] - current[1]
+    target_width = target[2] - target[0]
+    target_height = target[3] - target[1]
+    if current_width <= 0 or current_height <= 0:
+        return
+    if target_width <= 0 or target_height <= 0:
+        return
+
+    x_scale = target_width / current_width
+    y_scale = target_height / current_height
+    x_shift = target[0] - x_scale * current[0]
+    y_shift = target[1] - y_scale * current[1]
+    glyph.transform((x_scale, 0, 0, y_scale, x_shift, y_shift))
+
+
+def fit_fallback_to_area(
+    glyph,
+    target_bounds: tuple[float, float, float, float],
+    target_area: float,
+    initial_stroke_width: float,
+) -> float:
+    """Fit an incompatible outline to interpolated bounds and ink weight."""
+    source_layer = glyph.foreground.dup()
+    candidates = []
+
+    def render(stroke_width: float) -> float:
+        glyph.foreground = source_layer
+        if stroke_width:
+            glyph.changeWeight(stroke_width, "auto", 0, 0, "squish")
+        fit_glyph_to_bounds(glyph, target_bounds)
+        area = layer_ink_area(glyph.foreground)
+        candidates.append((abs(area - target_area), glyph.foreground.dup(), area))
+        return area
+
+    base_area = render(0)
+    if abs(base_area - target_area) <= INTERPOLATION_AREA_TOLERANCE:
+        return base_area
+    if target_area < base_area:
+        return base_area
+
+    outer_stroke = max(abs(initial_stroke_width), 1)
+    outer_area = render(outer_stroke)
+
+    if min(base_area, outer_area) <= target_area <= max(base_area, outer_area):
+        inner_stroke = 0.0
+        inner_area = base_area
+        for _ in range(FALLBACK_AREA_SEARCH_STEPS):
+            area_delta = outer_area - inner_area
+            if not area_delta:
+                break
+            stroke_width = round(
+                inner_stroke
+                + (target_area - inner_area)
+                * (outer_stroke - inner_stroke)
+                / area_delta
+            )
+            if stroke_width in (inner_stroke, outer_stroke):
+                break
+            area = render(stroke_width)
+            if abs(area - target_area) <= INTERPOLATION_AREA_TOLERANCE:
+                break
+            if min(inner_area, area) <= target_area <= max(inner_area, area):
+                outer_stroke, outer_area = stroke_width, area
+            else:
+                inner_stroke, inner_area = stroke_width, area
+    elif outer_area > base_area and target_area > outer_area:
+        base_layer = candidates[0][1]
+        outer_layer = candidates[1][1]
+        if layer_signature(base_layer) == layer_signature(outer_layer):
+            layer_amount = (target_area - base_area) / (outer_area - base_area)
+            for _ in range(FALLBACK_AREA_SEARCH_STEPS):
+                layer = base_layer.interpolateNewLayer(outer_layer, layer_amount)
+                glyph.foreground = layer
+                fit_glyph_to_bounds(glyph, target_bounds)
+                area = layer_ink_area(glyph.foreground)
+                candidates.append(
+                    (abs(area - target_area), glyph.foreground.dup(), area)
+                )
+                if abs(area - target_area) <= INTERPOLATION_AREA_TOLERANCE:
+                    break
+                area_delta = area - base_area
+                if area_delta <= 0:
+                    break
+                layer_amount *= (target_area - base_area) / area_delta
+
+    _, best_layer, best_area = min(candidates, key=lambda candidate: candidate[0])
+    glyph.foreground = best_layer
+    return best_area
+
+
+def fallback_stroke_width(
+    spec: StyleSpec, lower_font, upper_font, amount: float
+) -> int:
+    lower_width = glyph_outline_width(lower_font, INTERPOLATION_REFERENCE_CODEPOINT)
+    upper_width = glyph_outline_width(upper_font, INTERPOLATION_REFERENCE_CODEPOINT)
+    if spec.source_label == spec.lower_label:
+        source_amount = 0.0
+    elif spec.source_label == spec.upper_label:
+        source_amount = 1.0
+    else:
+        raise ValueError(f"{spec.style} source is not an interpolation endpoint")
+    delta = (amount - source_amount) * (upper_width - lower_width)
+    if delta < 0:
+        raise ValueError(f"{spec.style} requires unsupported outline thinning")
+    return round(delta)
+
+
+def apply_interpolated_weight(
+    output_font,
+    lower_font,
+    upper_font,
+    spec: StyleSpec,
+    amount: float,
+    advance_widths: list[int],
+    quiet: bool,
+) -> InterpolationStats:
+    decompose_references(output_font)
+    decompose_references(lower_font)
+    decompose_references(upper_font)
+    lower_glyphs = glyph_map(lower_font)
+    upper_glyphs = glyph_map(upper_font)
+    stroke_width = fallback_stroke_width(spec, lower_font, upper_font, amount)
+
+    matched = direct = fallback = missing = 0
     with suppress_c_stderr(quiet):
-        for glyph in list(font.glyphs()):
-            if glyph.references:
-                glyph.unlinkRef()
-            glyph.changeWeight(offset_width, "auto", 0, 0, "auto")
-            changed += 1
-    return changed
+        for output_glyph in output_font.glyphs():
+            identity = glyph_identity(output_glyph)
+            lower_glyph = lower_glyphs.get(identity)
+            upper_glyph = upper_glyphs.get(identity)
+            if lower_glyph is None or upper_glyph is None:
+                missing += 1
+                continue
+
+            matched += 1
+            expected_bounds = interpolate_bounds(
+                lower_glyph.boundingBox(), upper_glyph.boundingBox(), amount
+            )
+            interpolated_layer = safe_interpolated_layer(
+                lower_glyph, upper_glyph, amount
+            )
+            if interpolated_layer is not None:
+                output_glyph.foreground = interpolated_layer
+                direct += 1
+            else:
+                lower_area = layer_ink_area(lower_glyph.foreground)
+                upper_area = layer_ink_area(upper_glyph.foreground)
+                target_area = interpolate_number(lower_area, upper_area, amount)
+                fitted_area = fit_fallback_to_area(
+                    output_glyph,
+                    expected_bounds,
+                    target_area,
+                    stroke_width,
+                )
+                if 0 <= amount <= 1 and not (
+                    min(lower_area, upper_area) - INTERPOLATION_AREA_TOLERANCE
+                    <= fitted_area
+                    <= max(lower_area, upper_area) + INTERPOLATION_AREA_TOLERANCE
+                ):
+                    raise ValueError(
+                        f"{spec.style} {identity} weight fell outside its masters"
+                    )
+                fallback += 1
+
+            if (
+                bounds_error(output_glyph.boundingBox(), expected_bounds)
+                > INTERPOLATION_BOUNDS_TOLERANCE
+            ):
+                raise ValueError(
+                    f"{spec.style} {identity} bounds do not match interpolation"
+                )
+
+            glyph_id = output_glyph.originalgid
+            if not 0 <= glyph_id < len(advance_widths):
+                raise ValueError(f"{spec.style} {identity} has no stable source GID")
+            output_glyph.width = advance_widths[glyph_id]
+
+    if missing:
+        raise ValueError(f"{spec.style} is missing {missing} master glyphs")
+    return InterpolationStats(matched, direct, fallback, missing)
 
 
 def slant_non_cjk_glyphs(font, angle: float) -> tuple[int, int]:
@@ -573,8 +1264,8 @@ def rewrite_metadata(font, spec: StyleSpec, italic: bool, italic_angle: float) -
     font.os2_stylemap = os2_stylemap(spec, italic)
 
     notice = (
-        "SNU Sprout is a derivative of LINE Seed Sans KR and does not use "
-        "the reserved upstream family name."
+        "SNU Sprout is a derivative of LINE Seed Sans KR and LINE Seed Sans "
+        "and does not use the reserved upstream family name."
     )
     font.sfnt_names = (
         (
@@ -589,7 +1280,11 @@ def rewrite_metadata(font, spec: StyleSpec, italic: bool, italic_angle: float) -
         ("English (US)", "Version", f"Version {VERSION}"),
         ("English (US)", "PostScriptName", ps_name),
         ("English (US)", "Trademark", notice),
-        ("English (US)", "Manufacturer", "Seoul National University Sprout derivative build"),
+        (
+            "English (US)",
+            "Manufacturer",
+            "Seoul National University Sprout derivative build",
+        ),
         ("English (US)", "Preferred Family", FAMILY_NAME),
         ("English (US)", "Preferred Styles", output_style),
         ("English (US)", "Compatible Full", full_name),
@@ -600,19 +1295,75 @@ def output_path_for(output_dir: Path, spec: StyleSpec, italic: bool) -> Path:
     return output_dir / output_filename(spec.style, italic)
 
 
-def build_variant(fontforge, args, masters: dict[str, Path], spec: StyleSpec, italic: bool) -> Path:
+def build_variant(
+    fontforge,
+    args,
+    masters: dict[str, Path],
+    en_extra_bold_path: Path | None,
+    extra_bold_amount: float,
+    spec: StyleSpec,
+    italic: bool,
+) -> Path:
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     quiet = not args.verbose_fontforge
     font = open_source_font(fontforge, masters[spec.source_label], quiet)
+    interpolation_amount = style_interpolation_amount(spec, extra_bold_amount)
+    interpolation_stats = InterpolationStats(0, 0, 0, 0)
+    graft_name_map: dict[str, str] = {}
+    grafted_glyphs = 0
 
     try:
         flattened = flatten_cid_font(font, quiet)
+        if interpolation_amount is not None:
+            opened_fonts = []
+            if spec.source_label == spec.lower_label:
+                lower_font = font
+            else:
+                lower_font = open_source_font(
+                    fontforge, masters[spec.lower_label], quiet
+                )
+                opened_fonts.append(lower_font)
+            if spec.source_label == spec.upper_label:
+                upper_font = font
+            else:
+                upper_font = open_source_font(
+                    fontforge, masters[spec.upper_label], quiet
+                )
+                opened_fonts.append(upper_font)
+            try:
+                advance_widths = interpolated_advance_widths(
+                    masters[spec.lower_label],
+                    masters[spec.upper_label],
+                    interpolation_amount,
+                )
+                if lower_font is not font:
+                    flatten_cid_font(lower_font, quiet)
+                if upper_font is not font:
+                    flatten_cid_font(upper_font, quiet)
+                interpolation_stats = apply_interpolated_weight(
+                    font,
+                    lower_font,
+                    upper_font,
+                    spec,
+                    interpolation_amount,
+                    advance_widths,
+                    quiet,
+                )
+            finally:
+                for opened_font in opened_fonts:
+                    opened_font.close()
         renamed = neutralize_cid_glyph_names(font, quiet) if flattened else 0
-        synthetic_offset_width = spec.synthetic_weight_steps * args.synthetic_weight_width
-        synthetic_changed = apply_synthetic_weight(font, synthetic_offset_width, quiet)
-        slanted, upright = slant_non_cjk_glyphs(font, args.italic_angle) if italic else (0, 0)
+        if spec.style == "ExtraBold":
+            if en_extra_bold_path is None:
+                raise ValueError("ExtraBold requires the LINE Seed EN source")
+            graft_name_map, grafted_glyphs = graft_english_glyphs(
+                fontforge, font, en_extra_bold_path, quiet
+            )
+        slanted, upright = (
+            slant_non_cjk_glyphs(font, args.italic_angle) if italic else (0, 0)
+        )
         italic_angle = -args.italic_angle if italic else 0
         rewrite_metadata(font, spec, italic, italic_angle)
 
@@ -625,6 +1376,16 @@ def build_variant(fontforge, args, masters: dict[str, Path], spec: StyleSpec, it
         font.close()
 
     revision = stamp_font_revision(output_path)
+    interpolated_pairs = grafted_pairs = 0
+    if interpolation_amount is not None:
+        interpolated_pairs, grafted_pairs = interpolate_gpos_kerning(
+            output_path,
+            masters[spec.lower_label],
+            masters[spec.upper_label],
+            interpolation_amount,
+            en_extra_bold_path if graft_name_map else None,
+            graft_name_map,
+        )
 
     guard_summary = "none"
     if italic and not args.no_italic_guard:
@@ -642,8 +1403,12 @@ def build_variant(fontforge, args, masters: dict[str, Path], spec: StyleSpec, it
         )
 
     print(
-        f"{output_path}: synthetic_weighted={synthetic_changed}, "
-        f"synthetic_offset_width={synthetic_offset_width}, "
+        f"{output_path}: interpolated={interpolation_stats.direct}, "
+        f"interpolation_fallback={interpolation_stats.fallback}, "
+        f"interpolation_missing={interpolation_stats.missing}, "
+        f"interpolated_kern_pairs={interpolated_pairs}, "
+        f"en_grafted_glyphs={grafted_glyphs}, "
+        f"en_grafted_kern_pairs={grafted_pairs}, "
         f"italic_slanted={slanted}, italic_upright={upright}, "
         f"cid_flattened={flattened}, glyphs_renamed={renamed}, "
         f"head_revision={revision}, italic_guard={guard_summary}, "
@@ -665,21 +1430,49 @@ def main() -> None:
 
     masters = ensure_source_fonts(args)
     specs = selected_style_specs(args.styles)
+    needs_extra_bold = any(spec.style == "ExtraBold" for spec in specs)
+    en_extra_bold_path = ensure_en_extrabold(args) if needs_extra_bold else None
+    extra_bold_amount = DEFAULT_EXTRABOLD_AMOUNT
+    if en_extra_bold_path is not None:
+        extra_bold_amount = calibrate_extra_bold_amount(
+            fontforge,
+            masters,
+            en_extra_bold_path,
+            not args.verbose_fontforge,
+        )
+        print(
+            "Calibrated ExtraBold from matching KR/EN Latin outlines: "
+            f"{extra_bold_amount:.4f}"
+        )
     build_upright = not args.italic_only
     build_italic = not args.upright_only
-    args.synthetic_weight_width = derive_synthetic_weight_width_from_sources(
-        fontforge,
-        masters,
-        not args.verbose_fontforge,
-    )
-    print(f"Derived synthetic weight offset width: {args.synthetic_weight_width}")
 
     built_paths = []
     for spec in specs:
         if build_upright:
-            built_paths.append(build_variant(fontforge, args, masters, spec, italic=False))
+            built_paths.append(
+                build_variant(
+                    fontforge,
+                    args,
+                    masters,
+                    en_extra_bold_path,
+                    extra_bold_amount,
+                    spec,
+                    italic=False,
+                )
+            )
         if build_italic:
-            built_paths.append(build_variant(fontforge, args, masters, spec, italic=True))
+            built_paths.append(
+                build_variant(
+                    fontforge,
+                    args,
+                    masters,
+                    en_extra_bold_path,
+                    extra_bold_amount,
+                    spec,
+                    italic=True,
+                )
+            )
 
     print(f"Built {len(built_paths)} font(s).")
 

@@ -20,6 +20,11 @@ class PackageDistributionTests(unittest.TestCase):
     def test_distribution_contains_only_flat_fonts_and_licenses(self):
         packager = load_packager()
 
+        self.assertEqual(
+            [name for _, name in packager.LICENSE_ENTRIES],
+            ["LICENSE.txt", "LICENSE-LINESeed.txt"],
+        )
+
         with tempfile.TemporaryDirectory() as tmp:
             project_root = pathlib.Path(tmp)
             otf_dir = project_root / "otf"

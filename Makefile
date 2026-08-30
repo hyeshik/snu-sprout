@@ -1,6 +1,7 @@
 PYTHON ?= python3
 FONTFORGE ?= fontforge
 SOURCE_ZIP_URL ?= https://seed.line.me/src/images/fonts/LINE_Seed_Sans_KR.zip
+EN_SOURCE_ZIP_URL ?= https://seed.line.me/src/images/fonts/LINE_Seed_Sans_EN.zip
 DOWNLOAD_DIR ?= vendor/downloads
 SOURCE_DIR ?= original
 OUTPUT_DIR ?= instance_otf
@@ -16,6 +17,7 @@ build:
 	rm -f "$(OUTPUT_DIR)"/SNUSprout-*.otf "$(OUTPUT_DIR)"/SNUSprout-*.otf.guard-tmp
 	$(FONTFORGE) -lang=py -script $(BUILD_SCRIPT) \
 		--source-zip-url "$(SOURCE_ZIP_URL)" \
+		--en-source-zip-url "$(EN_SOURCE_ZIP_URL)" \
 		--download-dir "$(DOWNLOAD_DIR)" \
 		--source-dir "$(SOURCE_DIR)" \
 		--output-dir "$(OUTPUT_DIR)" \

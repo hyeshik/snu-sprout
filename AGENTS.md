@@ -2,7 +2,8 @@
 
 ## Purpose
 
-This repository exists to produce final `SNU Sprout` OTF files from three upstream `LINESeedKR` OTF masters that are supplied locally by the user.
+This repository produces final `SNU Sprout` OTF files from three upstream
+`LINESeedKR` OTF masters and the native LINE Seed EN ExtraBold OTF.
 
 The canonical workflow is the standalone script:
 
@@ -18,8 +19,10 @@ Only these inputs are required for the final build:
 - `original/LINESeedKR-Th.otf`
 - `original/LINESeedKR-Rg.otf`
 - `original/LINESeedKR-Bd.otf`
+- `original/LINESeedSans_XBd.otf` (needed when ExtraBold is selected)
 
-If these files are missing, the canonical builder is allowed to download them from the configured upstream ZIP URL and place them in `original/`.
+If these files are missing, the canonical builder is allowed to download them
+from the configured upstream KR and EN ZIP URLs and place them in `original/`.
 
 fontTools must be importable from the interpreter FontForge embeds, which is
 usually the system Python rather than an active virtualenv or Conda environment.
@@ -28,19 +31,36 @@ Do not commit the source fonts unless the user explicitly asks for that.
 
 ## Build Model
 
-The repository does not rely on a true variable-font interpolation build because the upstream masters are not broadly interpolation-compatible.
+The repository does not rely on a designspace or variable-font build because
+the upstream masters are not broadly interpolation-compatible. It does perform
+guarded per-glyph interpolation between the static source masters.
 
 Expected behavior:
 
 - `Thin`, `Regular`, `Bold`: direct builds from the corresponding source masters
-- `Light`, `Medium`, `ExtraBold`: synthetic weights derived by offsetting outlines from the nearest master
+- `Light`: weight 300 at one-third of the Thin (250) to Regular (400) interval
+- `Medium`: weight 500 at one-third of the Regular (400) to Bold (700) interval
+- `ExtraBold`: shared non-CJK glyphs come from native LINE Seed EN ExtraBold;
+  remaining glyphs extrapolate the KR Regular-to-Bold progression at the
+  position measured from corresponding Latin outline point motion (currently
+  `2.0` on that design interval)
+- compatible outlines are interpolated point for point only when topology,
+  point movement, bounds, and ink area pass the builder's safety checks
+- incompatible outlines start from the nearest master, use FontForge's
+  `squish` counter mode, and are fitted to interpolated bounds and a
+  master-bounded ink area
+- advance widths, left side bearings, and GPOS kerning are interpolated by
+  source GID; native EN ExtraBold metrics and EN-to-EN kerning override those
+  values for grafted glyphs
 - `ExtraLight`: intentionally not built because negative outline thinning damages Latin capitals
 - each built weight also produces an italic companion by slanting non-CJK glyphs while keeping Han, Hangul, Hiragana, Katakana, and Bopomofo glyphs upright
 - every italic build then appends a class-based GPOS pair positioning lookup to each `kern` feature so a slanted glyph cannot collide with the following upright CJK glyph; the shear leaves advance widths alone, so without it `f다` overlaps by 82 units. Split the two sides with the builder's own `slants_in_italic`, so the guard cannot drift away from the slanting rule, and keep the rounding conservative (overhangs up, side bearings down)
 - after `cidFlatten`, every glyph is renamed to a registry-neutral name: encoded glyphs take their AGL codepoint name (`uniXXXX` / `uXXXXXX`) and substituted glyphs take the AGL names of their inputs (`uni0066_uni0069` for fi, `uni0021.locl`). Do not reintroduce the `Korea1.<cid>` names FontForge derives from the masters' (mislabeled) Adobe-Korea1 ROS, because macOS Core Text then resolves them through the standard Adobe-Korea1 CMap and shows wrong syllables
 - keep the glyphs only `liga`, `calt`, and `locl` reach. No codepoint maps to the `fi`/`fl`/`ff`/`ffi`/`ffl` ligatures, the contextual `j` alternates, or the localized punctuation, and deleting them makes FontForge drop the lookups that produce them, which is how the Latin ligatures were lost between 0.1.2 and 0.4.0. Weighting and slanting read the codepoints back out of the names, so a substituted glyph follows the glyphs it is substituted from
 
-Do not replace this with a designspace interpolation workflow unless you first verify master compatibility across the full glyph set.
+Do not replace this with a designspace interpolation workflow unless you first
+verify master compatibility across the full glyph set. Keep the per-glyph
+bounds and ink-area guards when changing the hybrid interpolation path.
 
 ## Git Expectations
 
@@ -82,6 +102,8 @@ After changing the build logic, at minimum:
 4. Confirm the expected `OS/2.usWeightClass` is written
 5. Confirm `OS/2.fsSelection` keeps bit 7 (`USE_TYPO_METRICS`) set
 6. Confirm `liga`, `calt`, `locl`, and `frac` all survive into the output, and that shaping `fi fl ff ffi ffl` returns five ligature glyphs
+7. Confirm ExtraBold's shared non-CJK outlines, horizontal metrics, and
+   EN-to-EN kerning match the native LINE Seed EN ExtraBold source
 
 If italic layout changed, also build one italic and confirm with a real shaper
 that `f다` has a non-negative ink gap while a non-colliding pair such as `h다`
@@ -99,8 +121,9 @@ Keep `README.md` aligned with the actual implemented workflow, especially:
 - dependency list
 - required input font names
 - automatic source download behavior
+- native EN ExtraBold grafting and Latin-derived axis calibration
 - output directory behavior
-- the synthetic-weight caveat
+- the hybrid weight-interpolation model
 - the synthetic-italic caveat
 
 If the build behavior changes, update `README.md` and `AGENTS.md` in the same change.
