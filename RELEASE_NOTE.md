@@ -1,119 +1,72 @@
-# SNU Sprout v0.7.0
+# SNU Sprout v0.8.0
 
-SNU Sprout is an OpenType/CFF family derived from LINE Seed Sans KR and LINE
-Seed Sans. It interpolates intermediate weights and companion italics from the
-Korean masters, and now uses the native English ExtraBold design where an exact
-upstream weight exists.
+SNU Sprout 0.8.0 makes the upper half of the family a continuous eight-weight
+sequence. The previous ExtraBold design has been reclassified as Black, a new
+ExtraBold is synthesized halfway between Bold and Black, and a new SemiBold
+fills the gap between Medium and Bold. Both upright and italic variants are
+included.
 
-Every OTF now uses the shared SNU family version scheme: OpenType name ID 5 is
-`Version 0.7.0`, and the numeric `head.fontRevision` field is `0.7`.
+Every OTF reports OpenType name version `Version 0.8.0` and numeric
+`head.fontRevision` value `0.8`.
 
-## New in 0.7.0
+## New in 0.8.0
 
-- **Native LINE Seed EN ExtraBold:** the 167 shared non-CJK glyphs in weight 800
-  now use the official EN ExtraBold outlines and advances instead of generated
-  approximations. Native EN kerning is retained for pairs between those glyphs;
-  mixed and Korean pairs continue on the calibrated KR axis.
-- **Latin-calibrated Korean ExtraBold:** matching point motion across the KR
-  Regular and Bold Latin glyphs and native EN ExtraBold places weight 800 at
-  `2.0` on the Regular-to-Bold design interval. Hangul and every glyph absent
-  from EN are extrapolated at that observed position, so generated Korean and
-  native English share the same visual weight rather than merely following the
-  numeric OS/2 weight ratio.
-- **Continuous weight progression:** Light and Medium now interpolate outline
-  size, advance width, side bearing, ink weight, and kerning between their
-  adjacent source masters. The old nearest-master offset made the synthetic
-  weights wider than the source weights on either side, especially in Latin
-  text. The official EN desktop package has no Light or Medium master, so those
-  weights correctly remain interpolated instead of borrowing a nearby design.
-- **Master-bounded fallback outlines:** glyphs whose source contours are not
-  safely point-compatible are fitted to interpolated bounds and ink weight
-  instead of using FontForge's Latin counter-retention heuristic. Every Light
-  and Medium glyph is checked against its adjacent masters during the build.
-- **Interpolated spacing:** horizontal advances, left side bearings, and GPOS
-  kerning now follow the same source-master axis as the outlines. This removes
-  the two alternating width groups previously visible across the six weights.
+- **New SemiBold (600):** outlines, advance widths, side bearings, and kerning
+  are interpolated at two-thirds of the LINE Seed Sans KR Regular-to-Bold
+  interval. It sits exactly between SNU Sprout Medium (500) and Bold (700) on
+  that design axis.
+- **New ExtraBold (800):** Korean and other glyphs absent from LINE Seed EN are
+  generated halfway between Bold and Black, at `1.5` on the KR
+  Regular-to-Bold axis. The 167 shared non-CJK glyphs instead interpolate the
+  native LINE Seed EN Bold and ExtraBold outlines, metrics, and kerning at
+  one-half. This keeps the English and Korean portions at the same visual step.
+- **Former ExtraBold is now Black (900):** its outlines are preserved rather
+  than made heavier. The shared non-CJK glyphs remain the official LINE Seed EN
+  ExtraBold design, and the other glyphs remain at the Latin-calibrated `2.0`
+  extrapolation point. Only their family position and weight metadata change.
+- **Continuous upper-weight progression:** the resulting sequence is Medium
+  500, SemiBold 600, Bold 700, ExtraBold 800, and Black 900. The new ExtraBold
+  has measured Latin coverage between Bold and Black, while Black remains
+  identical to the previous release's ExtraBold design.
+- **Expanded flat distribution:** the archive now contains 16 OTF files plus
+  `LICENSE.txt` and `LICENSE-LINESeed.txt` at its root. Specimens, documentation,
+  and other project files are not included.
 
-## Included from 0.6.0
+## Included from 0.7.0
 
-- **Unified distribution:** the release ZIP has a flat root containing only
-  the 12 OTF files, `LICENSE.txt`, and `LICENSE-LINESeed.txt`.
-- **Unified version metadata:** the font name record, numeric revision, and
-  release asset all derive from one version constant.
-
-## Included from 0.5.0
-
-- **`fi`, `fl`, `ff`, `ffi`, and `ffl` ligate again.** The FontForge port
-  deleted every glyph the `cmap` could not reach, and the five Latin ligatures
-  are exactly that: `liga` substitutes them in, nothing encodes them. With the
-  glyphs gone FontForge dropped the lookup that produces them, so `fi` shaped as
-  two glyphs from 0.1.2 onward. The build now keeps them.
-- **The contextual `j` alternates and the localized punctuation came back with
-  them.** `calt` swaps `j` for a narrower form after `g`, `j`, `§`, and after
-  opening brackets, and `locl` swaps 25 punctuation marks for forms drawn to sit
-  with Korean text. Both lost their outputs the same way; the `calt` feature
-  survived in the font as an empty shell that substituted nothing.
-- **Substituted glyphs are named for what they replace.** A glyph no codepoint
-  maps to is now named `uni0066_uni0069` (fi) or `uni0021.locl`, which keeps it
-  clear of the `Korea1.<cid>` names that make macOS Core Text resolve glyphs
-  through the standard Adobe-Korea1 CMap. The names also record the codepoints
-  behind the glyph, so weight interpolation, the italic slant, and the
-  italic-to-CJK collision guard treat a ligature exactly like the glyphs it is
-  built from: `fi다` now clears in italic just as `f다` does.
+- Intermediate weights interpolate outline size, advance width, side bearing,
+  ink weight, and GPOS kerning on a single source-master axis.
+- Point-compatible outlines interpolate directly. Incompatible contours use a
+  fallback fitted to the same interpolated bounds and ink-weight target.
+- Matching Latin point motion calibrates the upper Korean extrapolation against
+  the native LINE Seed EN ExtraBold design.
 
 ## Included from earlier releases
 
-### Italic-to-CJK collision guard
-
-Slanting an outline leaves its advance width alone, so a sheared non-CJK glyph
-could lean past its advance into the upright CJK glyph that followed. In `f다` the
-italic `f` overhung its advance by 160 units against 78 units of side bearing on
-`다`, an 82 unit overlap. Every italic carries a generated kerning lookup that
-widens only the colliding pairs; `f다` goes from −82 to +38 units, while pairs
-that already cleared, such as `h다`, keep the spacing they had. It is kerning, so
-it inserts no space glyph and adds no line-break opportunity, and Latin-internal
-kerning is untouched.
-
-### Honest font versions
-
-FontForge reads only the major and minor components of the version it is handed,
-so it wrote the same `head.fontRevision` for 0.3.0, 0.3.1, and 0.3.2. The builder
-stamps `head.fontRevision` itself since 0.4.0, and refuses a version it cannot
-encode uniquely instead of shipping a colliding one. This release reports `0.7`.
-
-### Family name
-
-The family was renamed from `SNU Sprout Sans` to **`SNU Sprout`** in 0.3.0, and
-no backward-compatible aliases are kept. Anything that selects the old name will
-not find it:
-
-| | 0.1.2 | 0.7.0 |
-|---|---|---|
-| Family name | `SNU Sprout Sans` | `SNU Sprout` |
-| PostScript prefix | `SNUSproutSans` | `SNUSprout` |
-| Files | `SNUSproutSans-Regular.otf` | `SNUSprout-Regular.otf` |
-| Release asset | `SNUSproutSans.zip` | `SNUSprout-0.7.0.zip` |
+- **OpenType-only glyphs are retained:** `fi`, `fl`, `ff`, `ffi`, and `ffl`
+  ligatures, contextual `j` alternates, and Korean-localized punctuation remain
+  available to their `liga`, `calt`, and `locl` lookups.
+- **Synthetic italics keep CJK upright:** non-CJK glyphs are slanted 10 degrees,
+  while Han, Hangul, Hiragana, Katakana, and Bopomofo glyphs stay upright. A
+  generated GPOS guard prevents a slanted glyph from colliding with following
+  upright CJK text without changing Latin-internal kerning.
+- **Registry-neutral glyph names:** flattened CID glyphs are renamed so macOS
+  Core Text and other renderers honor the font `cmap` instead of resolving them
+  through the standard Adobe-Korea1 ordering.
+- **Unified versions and packaging:** font name records, numeric revisions, and
+  the release asset name derive from one version constant. The ZIP root contains
+  only consistently named OTFs and the project and upstream licenses.
 
 ## What's in the build
 
-The release asset is `SNUSprout-0.7.0.zip` and contains 12 static OTF files plus
-the SNU Sprout and upstream LINE Seed license texts at the ZIP root:
+The release asset is `SNUSprout-0.8.0.zip` and contains these 16 static OTFs:
 
-- **Upright**: Thin, Light, Regular, Medium, Bold, ExtraBold
-- **Italic**: ThinItalic, LightItalic, RegularItalic, MediumItalic, BoldItalic,
-  ExtraBoldItalic
+- **Upright:** Thin, Light, Regular, Medium, SemiBold, Bold, ExtraBold, Black
+- **Italic:** ThinItalic, LightItalic, RegularItalic, MediumItalic,
+  SemiBoldItalic, BoldItalic, ExtraBoldItalic, BlackItalic
 
-ExtraLight remains intentionally omitted, because FontForge's negative outline
-thinning damaged Latin capital counters and lower curves.
-
-## Carried over from earlier releases
-
-- **Synthetic italics keep CJK upright**: Non-CJK glyphs are slanted 10 degrees
-  while Han, Hangul, Hiragana, Katakana, and Bopomofo glyphs stay upright.
-- **CID glyph-name neutralization**: Glyphs are renamed to registry-neutral names
-  after flattening, so macOS Core Text honors the font `cmap` instead of
-  resolving glyphs through the standard Adobe-Korea1 CMap and showing wrong
-  syllables.
+ExtraLight remains intentionally omitted because negative outline thinning
+damaged Latin capital counters and lower curves.
 
 ## Upstream source
 

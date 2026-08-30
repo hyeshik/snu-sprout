@@ -67,7 +67,13 @@ class BuildSnuSproutTests(unittest.TestCase):
             builder.DEFAULT_EN_SOURCE_ZIP_URL,
             "https://seed.line.me/src/images/fonts/LINE_Seed_Sans_EN.zip",
         )
-        self.assertEqual(builder.EN_EXTRABOLD_FILENAME, "LINESeedSans_XBd.otf")
+        self.assertEqual(
+            builder.EN_SOURCE_FILES,
+            {
+                "Bold": "LINESeedSans_Bd.otf",
+                "ExtraBold": "LINESeedSans_XBd.otf",
+            },
+        )
         self.assertEqual(builder.DEFAULT_OUTPUT_DIR, "instance_otf")
 
     def test_style_matrix_keeps_current_sprout_weight_model(self):
@@ -76,7 +82,16 @@ class BuildSnuSproutTests(unittest.TestCase):
 
         self.assertEqual(
             list(specs),
-            ["Thin", "Light", "Regular", "Medium", "Bold", "ExtraBold"],
+            [
+                "Thin",
+                "Light",
+                "Regular",
+                "Medium",
+                "SemiBold",
+                "Bold",
+                "ExtraBold",
+                "Black",
+            ],
         )
         self.assertEqual(specs["Thin"].source_label, "Thin")
         self.assertIsNone(builder.style_interpolation_amount(specs["Thin"]))
@@ -94,18 +109,35 @@ class BuildSnuSproutTests(unittest.TestCase):
         self.assertAlmostEqual(
             builder.style_interpolation_amount(specs["Medium"]), 1 / 3
         )
+        self.assertEqual(specs["SemiBold"].source_label, "Regular")
+        self.assertEqual(specs["SemiBold"].lower_label, "Regular")
+        self.assertEqual(specs["SemiBold"].upper_label, "Bold")
+        self.assertAlmostEqual(
+            builder.style_interpolation_amount(specs["SemiBold"]), 2 / 3
+        )
         self.assertEqual(specs["Bold"].source_label, "Bold")
         self.assertIsNone(builder.style_interpolation_amount(specs["Bold"]))
         self.assertEqual(specs["ExtraBold"].source_label, "Bold")
         self.assertEqual(specs["ExtraBold"].lower_label, "Regular")
         self.assertEqual(specs["ExtraBold"].upper_label, "Bold")
         self.assertAlmostEqual(
-            builder.style_interpolation_amount(specs["ExtraBold"]), 2.0
+            builder.style_interpolation_amount(specs["ExtraBold"]), 1.5
         )
         self.assertAlmostEqual(
             builder.style_interpolation_amount(specs["ExtraBold"], 1.975),
-            1.975,
+            1.4875,
         )
+        self.assertAlmostEqual(
+            builder.style_interpolation_amount(specs["Black"]), 2.0
+        )
+        self.assertAlmostEqual(
+            builder.style_interpolation_amount(specs["Black"], 1.975), 1.975
+        )
+        self.assertEqual(
+            builder.english_interpolation_amount(specs["ExtraBold"]), 0.5
+        )
+        self.assertEqual(builder.english_interpolation_amount(specs["Black"]), 1.0)
+        self.assertIsNone(builder.english_interpolation_amount(specs["SemiBold"]))
 
     def test_interpolation_helpers_follow_the_master_axis(self):
         builder = load_builder()
@@ -181,13 +213,16 @@ class BuildSnuSproutTests(unittest.TestCase):
             "https://example.test/LINE_Seed_Sans_EN.zip",
         )
 
-    def test_source_extraction_selects_only_the_requested_en_desktop_otf(self):
+    def test_source_extraction_selects_only_the_requested_en_desktop_otfs(self):
         builder = load_builder()
 
         with tempfile.TemporaryDirectory() as tmp:
             root = pathlib.Path(tmp)
             archive_path = root / "LINE_Seed_Sans_EN.zip"
             with zipfile.ZipFile(archive_path, "w") as archive:
+                archive.writestr(
+                    "LINE_Seed/Desktop/OTF/LINESeedSans_Bd.otf", b"desktop-bold"
+                )
                 archive.writestr(
                     "LINE_Seed/Desktop/OTF/LINESeedSans_XBd.otf", b"desktop"
                 )
@@ -199,22 +234,26 @@ class BuildSnuSproutTests(unittest.TestCase):
             builder.extract_source_fonts(
                 archive_path,
                 source_dir,
-                (builder.EN_EXTRABOLD_FILENAME,),
+                builder.EN_SOURCE_FILES.values(),
             )
 
             self.assertEqual(
-                (source_dir / builder.EN_EXTRABOLD_FILENAME).read_bytes(),
+                (source_dir / builder.EN_SOURCE_FILES["ExtraBold"]).read_bytes(),
                 b"desktop",
             )
             self.assertEqual(
-                list(source_dir.iterdir()),
-                [source_dir / builder.EN_EXTRABOLD_FILENAME],
+                (source_dir / builder.EN_SOURCE_FILES["Bold"]).read_bytes(),
+                b"desktop-bold",
+            )
+            self.assertEqual(
+                sorted(path.name for path in source_dir.iterdir()),
+                sorted(builder.EN_SOURCE_FILES.values()),
             )
 
     def test_head_revision_distinguishes_patch_releases(self):
         builder = load_builder()
 
-        self.assertEqual(builder.VERSION, "0.7.0")
+        self.assertEqual(builder.VERSION, "0.8.0")
         # FontForge reads only major.minor from font.version, so it writes the
         # same head.fontRevision for 0.3.0 and 0.3.1. The builder stamps the
         # revision itself so a patch release is not mistaken for its

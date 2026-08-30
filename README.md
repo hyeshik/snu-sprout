@@ -3,7 +3,7 @@
 SNU Sprout is an OpenType build derived from LINE Seed Sans KR and LINE Seed
 Sans. The build script downloads both source packages when needed, loads the
 three Korean OTF masters with FontForge, interpolates the complete weight
-sequence, grafts native LINE Seed EN glyphs into ExtraBold, and generates
+sequence, interpolates LINE Seed EN glyphs for the upper weights, and generates
 upright and italic OTF instances.
 
 The italic styles keep CJK glyphs upright and apply a synthetic 10 degree slant
@@ -74,7 +74,7 @@ Build the distribution ZIP:
 make distribution
 ```
 
-The ZIP has no wrapper directory. Its root contains only the 12 OTF files,
+The ZIP has no wrapper directory. Its root contains only the 16 OTF files,
 `LICENSE.txt`, and `LICENSE-LINESeed.txt`; the README, release notes, and
 other project files are not distributed.
 
@@ -92,18 +92,23 @@ The default build creates upright and italic variants for these weights:
 - Light: one-third of the Thin-to-Regular interval (weight 300)
 - Regular: LINE Seed Sans KR Regular
 - Medium: one-third of the Regular-to-Bold interval (weight 500)
+- SemiBold: two-thirds of the Regular-to-Bold interval (weight 600)
 - Bold: LINE Seed Sans KR Bold
-- ExtraBold: native LINE Seed EN ExtraBold for its shared non-CJK glyphs;
-  remaining glyphs continue the Regular-to-Bold progression at the position
+- ExtraBold: midpoint between Bold and Black; shared non-CJK glyphs interpolate
+  LINE Seed EN Bold-to-ExtraBold at one-half, while remaining glyphs continue
+  the KR Regular-to-Bold axis at `1.5`
+- Black: the former ExtraBold design; shared non-CJK glyphs use native LINE Seed
+  EN ExtraBold and remaining glyphs continue the KR axis at the position
   measured from matching KR and EN Latin outlines
 
-This produces 12 OTF files in total.
+This produces 16 OTF files in total.
 
 The official LINE Seed EN desktop package contains Thin (250), Regular (400),
 Bold (700), ExtraBold (800), and Heavy (900). It has no native Light (300) or
-Medium (500), so those two weights remain true interpolation instances rather
-than borrowing a nearby EN weight. ExtraBold is the one generated SNU Sprout
-weight with an exact EN counterpart.
+Medium (500), and no SemiBold (600), so those weights remain true interpolation
+instances rather than borrowing a nearby EN weight. SNU Sprout Black retains
+the former weight-800 design because its measured density is Black-like; native
+EN Heavy is intentionally not substituted because it is darker still.
 
 ## Build Details
 
@@ -113,18 +118,24 @@ Default build settings:
 - Fallback weight-step reference glyph: `I`
 - Intermediate horizontal metrics and kerning: linear interpolation by source GID
 - Intermediate outline bounds: linear interpolation between source masters
-- ExtraBold axis calibration: median matching-point motion across Latin letters
+- Black axis calibration: median matching-point motion across Latin letters
   and digits; the current official sources resolve to `2.0` on the KR
   Regular-to-Bold interval
+- ExtraBold KR-axis position: halfway from Bold (`1.0`) to Black (`2.0`),
+  currently `1.5`
 - ExtraBold shared non-CJK outlines, advances, side bearings, and kerning:
-  native LINE Seed EN ExtraBold values
+  one-half interpolation from LINE Seed EN Bold to ExtraBold
+- Black shared non-CJK outlines, advances, side bearings, and kerning:
+  native LINE Seed EN ExtraBold values (the former SNU Sprout ExtraBold design)
 - Incompatible-outline fallback: nearest master, fitted to interpolated bounds
   and master-bounded ink weight
 - Italic collision guard ink clearance: `30` units at UPM 1000
 - Italic collision guard geometry bucket: `5` units
 - Typographic line metrics: preserve LINE Seed Sans KR's `USE_TYPO_METRICS` flag
-- Font version: `0.7.0` (`head.fontRevision == 0.7`)
-- Package name: `SNUSprout-0.7.0.zip`
+- PANOSE weight: `No Fit`; the upstream KR masters all report the same PANOSE
+  weight, so the authoritative per-style classification is `OS/2.usWeightClass`
+- Font version: `0.8.0` (`head.fontRevision == 0.8`)
+- Package name: `SNUSprout-0.8.0.zip`
 
 The package name is derived from the `VERSION` constant in
 `build_snu_sprout.py`, which is the single source of truth for the font version.
@@ -218,7 +229,8 @@ fontforge -lang=py -script build_snu_sprout.py \
 ```
 
 For a complete local build that directory must contain `LINESeedKR-Th.otf`,
-`LINESeedKR-Rg.otf`, `LINESeedKR-Bd.otf`, and `LINESeedSans_XBd.otf`.
+`LINESeedKR-Rg.otf`, `LINESeedKR-Bd.otf`, `LINESeedSans_Bd.otf`, and
+`LINESeedSans_XBd.otf`.
 
 Override output and slant settings:
 
@@ -239,7 +251,7 @@ make distribution SOURCE_DIR=path/to/source-fonts BUILD_FLAGS=--no-download
 The repository includes a GitHub Actions workflow at
 `.github/workflows/build-package.yml`. It runs on pushes, pull requests, tag
 pushes matching `v*`, and manual dispatches. The workflow installs FontForge,
-runs the unit tests, builds all 12 OTF files, creates
+runs the unit tests, builds all 16 OTF files, creates
 `dist/SNUSprout-<version>.zip`, verifies the package, and uploads it as a
 workflow artifact. When the workflow is triggered by a tag matching `v*`, it
 also publishes a GitHub Release and attaches the versioned ZIP as a release
@@ -248,8 +260,8 @@ asset.
 Create and push a release tag:
 
 ```sh
-git tag v0.7.0
-git push origin v0.7.0
+git tag v0.8.0
+git push origin v0.8.0
 ```
 
 Reusing an existing release tag is intentionally treated as an error. Use a new
@@ -279,18 +291,18 @@ version tag for each published package.
   behavior so the large fallback `hhea` box does not shift text in layouts
   that center font line boxes.
 - Missing source OTFs are fetched automatically from the upstream LINE Seed KR
-  and EN ZIPs unless `--no-download` is used. An ExtraBold-only build needs the
-  EN source; builds that do not select ExtraBold do not.
+  and EN ZIPs unless `--no-download` is used. ExtraBold and Black builds need
+  the EN sources; builds that select neither do not.
 - Italic outputs are synthetic obliques: non-CJK glyphs are slanted by the
   builder, while glyphs classified as Han, Hangul, Hiragana, Katakana, or
   Bopomofo remain upright.
 - Italic outputs also carry a generated kerning guard that keeps slanted glyphs
   from colliding with the following upright CJK glyph.
-- Light and Medium are checked glyph by glyph to keep advance width, side
-  bearing, outline bounds, and ink weight inside their adjacent masters.
-  ExtraBold uses native EN glyphs where the two families overlap. Its remaining
-  glyphs follow the Regular-to-Bold progression at the position measured from
-  corresponding Latin point motion, so the grafted Latin and generated Hangul
-  share one observed design-axis location.
+- Light, Medium, and SemiBold are checked glyph by glyph to keep advance width,
+  side bearing, outline bounds, and ink weight inside their adjacent masters.
+  ExtraBold interpolates EN Bold-to-ExtraBold glyphs where the families overlap,
+  and uses the midpoint between Bold and Black on the KR axis elsewhere. Black
+  uses native EN ExtraBold glyphs and the matching calibrated KR extrapolation,
+  preserving the former ExtraBold design under its corrected weight name.
 - ExtraLight is intentionally omitted because FontForge negative outline
   thinning damaged Latin capital counters and lower curves.

@@ -17,10 +17,14 @@ STYLE_NAMES = (
     "RegularItalic",
     "Medium",
     "MediumItalic",
+    "SemiBold",
+    "SemiBoldItalic",
     "Bold",
     "BoldItalic",
     "ExtraBold",
     "ExtraBoldItalic",
+    "Black",
+    "BlackItalic",
 )
 EXPECTED_OTF_FILENAMES = tuple(
     f"{FAMILY_PREFIX}-{style}.otf" for style in STYLE_NAMES
@@ -36,7 +40,7 @@ def build_parser() -> argparse.ArgumentParser:
         description="Create the flat SNU Sprout distribution ZIP."
     )
     parser.add_argument("--input-dir", default="instance_otf")
-    parser.add_argument("--output", default="dist/SNUSprout-0.7.0.zip")
+    parser.add_argument("--output", default="dist/SNUSprout-0.8.0.zip")
     parser.add_argument("--project-root", default=str(PROJECT_ROOT))
     return parser
 

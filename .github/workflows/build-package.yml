@@ -40,9 +40,9 @@ jobs:
 
       - name: Verify distribution
         run: |
-          test "$(find instance_otf -maxdepth 1 -name 'SNUSprout-*.otf' | wc -l)" -eq 12
+          test "$(find instance_otf -maxdepth 1 -name 'SNUSprout-*.otf' | wc -l)" -eq 16
           test -f "$PACKAGE_ZIP"
-          test "$(unzip -Z1 "$PACKAGE_ZIP" | grep -Ec '^[^/]+$')" -eq 14
+          test "$(unzip -Z1 "$PACKAGE_ZIP" | grep -Ec '^[^/]+$')" -eq 18
           test -z "$(unzip -Z1 "$PACKAGE_ZIP" | grep -Ev '^(SNUSprout-[A-Za-z]+\.otf|LICENSE(-LINESeed)?\.txt)$')"
 
       - name: Upload package artifact
