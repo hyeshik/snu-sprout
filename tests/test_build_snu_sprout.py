@@ -94,12 +94,13 @@ class BuildSnuSproutTests(unittest.TestCase):
             ],
         )
         self.assertEqual(specs["Thin"].source_label, "Thin")
+        self.assertEqual(specs["Thin"].weight, 100)
         self.assertIsNone(builder.style_interpolation_amount(specs["Thin"]))
         self.assertEqual(specs["Light"].source_label, "Thin")
         self.assertEqual(specs["Light"].lower_label, "Thin")
         self.assertEqual(specs["Light"].upper_label, "Regular")
         self.assertAlmostEqual(
-            builder.style_interpolation_amount(specs["Light"]), 1 / 3
+            builder.style_interpolation_amount(specs["Light"]), 0.55
         )
         self.assertEqual(specs["Regular"].source_label, "Regular")
         self.assertIsNone(builder.style_interpolation_amount(specs["Regular"]))
@@ -121,23 +122,21 @@ class BuildSnuSproutTests(unittest.TestCase):
         self.assertEqual(specs["ExtraBold"].lower_label, "Regular")
         self.assertEqual(specs["ExtraBold"].upper_label, "Bold")
         self.assertAlmostEqual(
-            builder.style_interpolation_amount(specs["ExtraBold"]), 1.5
+            builder.style_interpolation_amount(specs["ExtraBold"]), 1.288
         )
         self.assertAlmostEqual(
-            builder.style_interpolation_amount(specs["ExtraBold"], 1.975),
-            1.4875,
-        )
-        self.assertAlmostEqual(
-            builder.style_interpolation_amount(specs["Black"]), 2.0
-        )
-        self.assertAlmostEqual(
-            builder.style_interpolation_amount(specs["Black"], 1.975), 1.975
+            builder.style_interpolation_amount(specs["Black"]), 1.576
         )
         self.assertEqual(
             builder.english_interpolation_amount(specs["ExtraBold"]), 0.5
         )
         self.assertEqual(builder.english_interpolation_amount(specs["Black"]), 1.0)
         self.assertIsNone(builder.english_interpolation_amount(specs["SemiBold"]))
+
+        reclassified_light = specs["Light"]._replace(weight=350)
+        self.assertAlmostEqual(
+            builder.style_interpolation_amount(reclassified_light), 0.55
+        )
 
     def test_interpolation_helpers_follow_the_master_axis(self):
         builder = load_builder()
@@ -253,7 +252,7 @@ class BuildSnuSproutTests(unittest.TestCase):
     def test_head_revision_distinguishes_patch_releases(self):
         builder = load_builder()
 
-        self.assertEqual(builder.VERSION, "0.8.0")
+        self.assertEqual(builder.VERSION, "0.9.0")
         # FontForge reads only major.minor from font.version, so it writes the
         # same head.fontRevision for 0.3.0 and 0.3.1. The builder stamps the
         # revision itself so a patch release is not mistaken for its

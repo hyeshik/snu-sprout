@@ -3,7 +3,7 @@
 ## Purpose
 
 This repository produces final `SNU Sprout` OTF files from three upstream
-`LINESeedKR` OTF masters and the native LINE Seed EN ExtraBold OTF.
+`LINESeedKR` OTF masters and the native LINE Seed EN Bold and ExtraBold OTFs.
 
 The canonical workflow is the standalone script:
 
@@ -19,7 +19,8 @@ Only these inputs are required for the final build:
 - `original/LINESeedKR-Th.otf`
 - `original/LINESeedKR-Rg.otf`
 - `original/LINESeedKR-Bd.otf`
-- `original/LINESeedSans_XBd.otf` (needed when ExtraBold is selected)
+- `original/LINESeedSans_Bd.otf` (needed when ExtraBold or Black is selected)
+- `original/LINESeedSans_XBd.otf` (needed when ExtraBold or Black is selected)
 
 If these files are missing, the canonical builder is allowed to download them
 from the configured upstream KR and EN ZIP URLs and place them in `original/`.
@@ -37,13 +38,19 @@ guarded per-glyph interpolation between the static source masters.
 
 Expected behavior:
 
-- `Thin`, `Regular`, `Bold`: direct builds from the corresponding source masters
-- `Light`: weight 300 at one-third of the Thin (250) to Regular (400) interval
+- `Thin`, `Regular`, `Bold`: direct builds from the corresponding source masters;
+  Thin uses conventional output metadata weight 100 without altering its source
+  outline
+- `Light`: weight 300 at `0.55` of the Thin-to-Regular design interval
 - `Medium`: weight 500 at one-third of the Regular (400) to Bold (700) interval
-- `ExtraBold`: shared non-CJK glyphs come from native LINE Seed EN ExtraBold;
-  remaining glyphs extrapolate the KR Regular-to-Bold progression at the
-  position measured from corresponding Latin outline point motion (currently
-  `2.0` on that design interval)
+- `SemiBold`: weight 600 at two-thirds of the Regular-to-Bold interval
+- `ExtraBold`: shared non-CJK glyphs interpolate native LINE Seed EN Bold to
+  ExtraBold at one-half; remaining glyphs extrapolate the KR Regular-to-Bold
+  progression at `1.288`
+- `Black`: shared non-CJK glyphs use native LINE Seed EN ExtraBold; remaining
+  glyphs extrapolate the KR Regular-to-Bold progression at `1.576`
+- OpenType metadata weights and source design-axis positions are separate
+  values; changing one must not implicitly move the other
 - compatible outlines are interpolated point for point only when topology,
   point movement, bounds, and ink area pass the builder's safety checks
 - incompatible outlines start from the nearest master, use FontForge's
@@ -121,7 +128,7 @@ Keep `README.md` aligned with the actual implemented workflow, especially:
 - dependency list
 - required input font names
 - automatic source download behavior
-- native EN ExtraBold grafting and Latin-derived axis calibration
+- native EN Bold-to-ExtraBold grafting and explicit KR-axis positions
 - output directory behavior
 - the hybrid weight-interpolation model
 - the synthetic-italic caveat

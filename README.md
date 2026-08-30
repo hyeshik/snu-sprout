@@ -3,16 +3,16 @@
 SNU Sprout is an OpenType build derived from LINE Seed Sans KR and LINE Seed
 Sans. The build script downloads both source packages when needed, loads the
 three Korean OTF masters with FontForge, interpolates the complete weight
-sequence, interpolates LINE Seed EN glyphs for the upper weights, and generates
-upright and italic OTF instances.
+sequence at explicit design-axis positions, interpolates LINE Seed EN glyphs
+for the upper weights, and generates upright and italic OTF instances.
 
 The italic styles keep CJK glyphs upright and apply a synthetic 10 degree slant
 to non-CJK glyphs, then add a kerning guard so slanted glyphs cannot collide
-with the upright CJK glyph that follows. Intermediate weights sit on the same
-axis as the source masters: outline bounds, advance widths, side
-bearings, and kerning are interpolated at the requested weight. Compatible
-outlines are interpolated point for point; incompatible outlines use a
-master-bounded fallback fitted to the same size and weight progression.
+with the upright CJK glyph that follows. OpenType weight metadata and source
+design-axis positions are independent: outline bounds, advance widths, side
+bearings, and kerning are interpolated at the explicitly calibrated position.
+Compatible outlines are interpolated point for point; incompatible outlines
+use a master-bounded fallback fitted to the same size and weight progression.
 
 ## Requirements
 
@@ -88,27 +88,26 @@ make clean
 
 The default build creates upright and italic variants for these weights:
 
-- Thin: LINE Seed Sans KR Thin
-- Light: one-third of the Thin-to-Regular interval (weight 300)
+- Thin: LINE Seed Sans KR Thin, reclassified to weight 100
+- Light: 55% of the Thin-to-Regular interval (weight 300)
 - Regular: LINE Seed Sans KR Regular
 - Medium: one-third of the Regular-to-Bold interval (weight 500)
 - SemiBold: two-thirds of the Regular-to-Bold interval (weight 600)
 - Bold: LINE Seed Sans KR Bold
-- ExtraBold: midpoint between Bold and Black; shared non-CJK glyphs interpolate
-  LINE Seed EN Bold-to-ExtraBold at one-half, while remaining glyphs continue
-  the KR Regular-to-Bold axis at `1.5`
-- Black: the former ExtraBold design; shared non-CJK glyphs use native LINE Seed
-  EN ExtraBold and remaining glyphs continue the KR axis at the position
-  measured from matching KR and EN Latin outlines
+- ExtraBold: shared non-CJK glyphs interpolate LINE Seed EN Bold-to-ExtraBold
+  at one-half, while remaining glyphs continue the KR Regular-to-Bold axis at
+  `1.288`
+- Black: shared non-CJK glyphs use native LINE Seed EN ExtraBold, while
+  remaining glyphs continue the KR Regular-to-Bold axis at `1.576`
 
 This produces 16 OTF files in total.
 
 The official LINE Seed EN desktop package contains Thin (250), Regular (400),
 Bold (700), ExtraBold (800), and Heavy (900). It has no native Light (300) or
 Medium (500), and no SemiBold (600), so those weights remain true interpolation
-instances rather than borrowing a nearby EN weight. SNU Sprout Black retains
-the former weight-800 design because its measured density is Black-like; native
-EN Heavy is intentionally not substituted because it is darker still.
+instances rather than borrowing a nearby EN weight. SNU Sprout deliberately
+uses conventional family metadata weight 100 for its KR-derived Thin outline.
+Native EN Heavy is intentionally not substituted because it is darker still.
 
 ## Build Details
 
@@ -118,11 +117,9 @@ Default build settings:
 - Fallback weight-step reference glyph: `I`
 - Intermediate horizontal metrics and kerning: linear interpolation by source GID
 - Intermediate outline bounds: linear interpolation between source masters
-- Black axis calibration: median matching-point motion across Latin letters
-  and digits; the current official sources resolve to `2.0` on the KR
-  Regular-to-Bold interval
-- ExtraBold KR-axis position: halfway from Bold (`1.0`) to Black (`2.0`),
-  currently `1.5`
+- Light KR-axis position: `0.55` on the Thin-to-Regular interval
+- ExtraBold KR-axis position: `1.288` on the Regular-to-Bold interval
+- Black KR-axis position: `1.576` on the Regular-to-Bold interval
 - ExtraBold shared non-CJK outlines, advances, side bearings, and kerning:
   one-half interpolation from LINE Seed EN Bold to ExtraBold
 - Black shared non-CJK outlines, advances, side bearings, and kerning:
@@ -134,8 +131,8 @@ Default build settings:
 - Typographic line metrics: preserve LINE Seed Sans KR's `USE_TYPO_METRICS` flag
 - PANOSE weight: `No Fit`; the upstream KR masters all report the same PANOSE
   weight, so the authoritative per-style classification is `OS/2.usWeightClass`
-- Font version: `0.8.0` (`head.fontRevision == 0.8`)
-- Package name: `SNUSprout-0.8.0.zip`
+- Font version: `0.9.0` (`head.fontRevision == 0.9`)
+- Package name: `SNUSprout-0.9.0.zip`
 
 The package name is derived from the `VERSION` constant in
 `build_snu_sprout.py`, which is the single source of truth for the font version.
@@ -260,8 +257,8 @@ asset.
 Create and push a release tag:
 
 ```sh
-git tag v0.8.0
-git push origin v0.8.0
+git tag v0.9.0
+git push origin v0.9.0
 ```
 
 Reusing an existing release tag is intentionally treated as an error. Use a new
@@ -301,8 +298,9 @@ version tag for each published package.
 - Light, Medium, and SemiBold are checked glyph by glyph to keep advance width,
   side bearing, outline bounds, and ink weight inside their adjacent masters.
   ExtraBold interpolates EN Bold-to-ExtraBold glyphs where the families overlap,
-  and uses the midpoint between Bold and Black on the KR axis elsewhere. Black
-  uses native EN ExtraBold glyphs and the matching calibrated KR extrapolation,
-  preserving the former ExtraBold design under its corrected weight name.
+  and uses `1.288` on the KR Regular-to-Bold axis elsewhere. Black uses native
+  EN ExtraBold glyphs and `1.576` on the KR axis. These independent positions
+  keep the Korean progression aligned with the family weight curve instead of
+  deriving Korean extrapolation from Latin point motion.
 - ExtraLight is intentionally omitted because FontForge negative outline
   thinning damaged Latin capital counters and lower curves.

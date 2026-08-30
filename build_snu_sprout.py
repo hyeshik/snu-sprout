@@ -5,7 +5,6 @@ import argparse
 import contextlib
 import math
 import os
-import statistics
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -15,7 +14,7 @@ from typing import Iterable, Iterator, NamedTuple
 FAMILY_NAME = "SNU Sprout"
 POSTSCRIPT_FAMILY_NAME = "SNUSprout"
 FILE_FAMILY_NAME = POSTSCRIPT_FAMILY_NAME
-VERSION = "0.8.0"
+VERSION = "0.9.0"
 DEFAULT_SOURCE_ZIP_URL = "https://seed.line.me/src/images/fonts/LINE_Seed_Sans_KR.zip"
 DEFAULT_EN_SOURCE_ZIP_URL = "https://seed.line.me/src/images/fonts/LINE_Seed_Sans_EN.zip"
 DEFAULT_DOWNLOAD_DIR = "vendor/downloads"
@@ -36,22 +35,14 @@ EN_SOURCE_FILES = {
     "Bold": "LINESeedSans_Bd.otf",
     "ExtraBold": "LINESeedSans_XBd.otf",
 }
-BLACK_CALIBRATION_TEXT = (
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
-)
-BLACK_AMOUNT_MIN = 1.5
-BLACK_AMOUNT_MAX = 2.5
-DEFAULT_BLACK_AMOUNT = 2.0
+LIGHT_INTERPOLATION_AMOUNT = 0.55
+EXTRABOLD_KR_INTERPOLATION_AMOUNT = 1.288
+BLACK_KR_INTERPOLATION_AMOUNT = 1.576
 
 SOURCE_FILES = {
     "Thin": "LINESeedKR-Th.otf",
     "Regular": "LINESeedKR-Rg.otf",
     "Bold": "LINESeedKR-Bd.otf",
-}
-MASTER_WEIGHTS = {
-    "Thin": 250,
-    "Regular": 400,
-    "Bold": 700,
 }
 
 
@@ -61,6 +52,7 @@ class StyleSpec(NamedTuple):
     source_label: str
     lower_label: str | None = None
     upper_label: str | None = None
+    interpolation_amount: float | None = None
 
 
 class InterpolationStats(NamedTuple):
@@ -71,14 +63,35 @@ class InterpolationStats(NamedTuple):
 
 
 STYLE_SPECS = (
-    StyleSpec("Thin", 250, "Thin"),
-    StyleSpec("Light", 300, "Thin", "Thin", "Regular"),
+    StyleSpec("Thin", 100, "Thin"),
+    StyleSpec(
+        "Light",
+        300,
+        "Thin",
+        "Thin",
+        "Regular",
+        LIGHT_INTERPOLATION_AMOUNT,
+    ),
     StyleSpec("Regular", 400, "Regular"),
-    StyleSpec("Medium", 500, "Regular", "Regular", "Bold"),
-    StyleSpec("SemiBold", 600, "Regular", "Regular", "Bold"),
+    StyleSpec("Medium", 500, "Regular", "Regular", "Bold", 1 / 3),
+    StyleSpec("SemiBold", 600, "Regular", "Regular", "Bold", 2 / 3),
     StyleSpec("Bold", 700, "Bold"),
-    StyleSpec("ExtraBold", 800, "Bold", "Regular", "Bold"),
-    StyleSpec("Black", 900, "Bold", "Regular", "Bold"),
+    StyleSpec(
+        "ExtraBold",
+        800,
+        "Bold",
+        "Regular",
+        "Bold",
+        EXTRABOLD_KR_INTERPOLATION_AMOUNT,
+    ),
+    StyleSpec(
+        "Black",
+        900,
+        "Bold",
+        "Regular",
+        "Bold",
+        BLACK_KR_INTERPOLATION_AMOUNT,
+    ),
 )
 
 
@@ -666,22 +679,18 @@ def interpolated_advance_widths(
         upper.close()
 
 
-def style_interpolation_amount(
-    spec: StyleSpec, black_amount: float = DEFAULT_BLACK_AMOUNT
-) -> float | None:
+def style_interpolation_amount(spec: StyleSpec) -> float | None:
     if spec.lower_label is None and spec.upper_label is None:
+        if spec.interpolation_amount is not None:
+            raise ValueError(
+                f"{spec.style} has an amount without interpolation masters"
+            )
         return None
     if spec.lower_label is None or spec.upper_label is None:
         raise ValueError(f"Incomplete interpolation masters for {spec.style}")
-    lower_weight = MASTER_WEIGHTS[spec.lower_label]
-    upper_weight = MASTER_WEIGHTS[spec.upper_label]
-    if lower_weight >= upper_weight:
-        raise ValueError(f"Invalid interpolation interval for {spec.style}")
-    if spec.style == "ExtraBold":
-        return 1 + (black_amount - 1) / 2
-    if spec.style == "Black":
-        return black_amount
-    return (spec.weight - lower_weight) / (upper_weight - lower_weight)
+    if spec.interpolation_amount is None:
+        raise ValueError(f"Missing interpolation amount for {spec.style}")
+    return spec.interpolation_amount
 
 
 def english_interpolation_amount(spec: StyleSpec) -> float | None:
@@ -940,74 +949,6 @@ def max_point_distance(left_layer, right_layer) -> float:
         for left, right in zip(left_contour, right_contour)
     )
     return max(distances, default=0.0)
-
-
-def latin_axis_coordinate_ratios(
-    regular_font, bold_font, black_reference_font
-) -> list[float]:
-    """Measure where native EN ExtraBold lies on the KR Latin design axis."""
-    regular_glyphs = glyph_map(regular_font)
-    bold_glyphs = glyph_map(bold_font)
-    black_reference_glyphs = glyph_map(black_reference_font)
-    ratios = []
-    for character in BLACK_CALIBRATION_TEXT:
-        identity = ("unicode", ord(character))
-        glyphs = (
-            regular_glyphs.get(identity),
-            bold_glyphs.get(identity),
-            black_reference_glyphs.get(identity),
-        )
-        if any(glyph is None for glyph in glyphs):
-            continue
-        layers = tuple(glyph.foreground for glyph in glyphs)
-        if not (
-            layer_signature(layers[0])
-            == layer_signature(layers[1])
-            == layer_signature(layers[2])
-        ):
-            continue
-        for contours in zip(*layers):
-            for points in zip(*contours):
-                for coordinate in ("x", "y"):
-                    regular_value = getattr(points[0], coordinate)
-                    master_delta = getattr(points[1], coordinate) - regular_value
-                    if abs(master_delta) < 1:
-                        continue
-                    target_delta = getattr(points[2], coordinate) - regular_value
-                    ratios.append(target_delta / master_delta)
-    return ratios
-
-
-def calibrate_black_amount(
-    fontforge,
-    masters: dict[str, Path],
-    en_extra_bold_path: Path,
-    quiet: bool,
-) -> float:
-    """Derive the Black extrapolation amount from native EN ExtraBold."""
-    fonts = [
-        open_source_font(fontforge, masters["Regular"], quiet),
-        open_source_font(fontforge, masters["Bold"], quiet),
-        open_source_font(fontforge, en_extra_bold_path, quiet),
-    ]
-    try:
-        flatten_cid_font(fonts[0], quiet)
-        flatten_cid_font(fonts[1], quiet)
-        for font in fonts:
-            decompose_references(font)
-        ratios = latin_axis_coordinate_ratios(*fonts)
-    finally:
-        for font in fonts:
-            font.close()
-
-    if not ratios:
-        raise ValueError("No compatible Latin outlines could calibrate ExtraBold")
-    amount = statistics.median(ratios)
-    if not BLACK_AMOUNT_MIN <= amount <= BLACK_AMOUNT_MAX:
-        raise ValueError(
-            f"Native EN ExtraBold is outside the expected Latin axis: {amount:.4f}"
-        )
-    return amount
 
 
 def align_source_glyph_to_tt_bounds(glyph, glyph_set, original_name: str) -> None:
@@ -1456,7 +1397,6 @@ def build_variant(
     args,
     masters: dict[str, Path],
     en_sources: dict[str, Path] | None,
-    black_amount: float,
     spec: StyleSpec,
     italic: bool,
 ) -> Path:
@@ -1465,7 +1405,7 @@ def build_variant(
 
     quiet = not args.verbose_fontforge
     font = open_source_font(fontforge, masters[spec.source_label], quiet)
-    interpolation_amount = style_interpolation_amount(spec, black_amount)
+    interpolation_amount = style_interpolation_amount(spec)
     interpolation_stats = InterpolationStats(0, 0, 0, 0)
     graft_name_map: dict[str, tuple[str, str]] = {}
     grafted_glyphs = 0
@@ -1598,18 +1538,6 @@ def main() -> None:
         english_interpolation_amount(spec) is not None for spec in specs
     )
     en_sources = ensure_en_fonts(args) if needs_en_sources else None
-    black_amount = DEFAULT_BLACK_AMOUNT
-    if en_sources is not None:
-        black_amount = calibrate_black_amount(
-            fontforge,
-            masters,
-            en_sources["ExtraBold"],
-            not args.verbose_fontforge,
-        )
-        print(
-            "Calibrated Black from matching KR/EN Latin outlines: "
-            f"{black_amount:.4f}"
-        )
     build_upright = not args.italic_only
     build_italic = not args.upright_only
 
@@ -1622,7 +1550,6 @@ def main() -> None:
                     args,
                     masters,
                     en_sources,
-                    black_amount,
                     spec,
                     italic=False,
                 )
@@ -1634,7 +1561,6 @@ def main() -> None:
                     args,
                     masters,
                     en_sources,
-                    black_amount,
                     spec,
                     italic=True,
                 )
