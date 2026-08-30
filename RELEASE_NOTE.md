@@ -10,7 +10,7 @@ Every OTF now uses the shared SNU family version scheme: OpenType name ID 5 is
 
 ## New in 0.7.0
 
-- **Native LINE Seed EN ExtraBold:** the 168 shared non-CJK glyphs in weight 800
+- **Native LINE Seed EN ExtraBold:** the 167 shared non-CJK glyphs in weight 800
   now use the official EN ExtraBold outlines and advances instead of generated
   approximations. Native EN kerning is retained for pairs between those glyphs;
   mixed and Korean pairs continue on the calibrated KR axis.
