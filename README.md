@@ -131,8 +131,8 @@ Default build settings:
 - Typographic line metrics: preserve LINE Seed Sans KR's `USE_TYPO_METRICS` flag
 - PANOSE weight: `No Fit`; the upstream KR masters all report the same PANOSE
   weight, so the authoritative per-style classification is `OS/2.usWeightClass`
-- Font version: `0.9.0` (`head.fontRevision == 0.9`)
-- Package name: `SNUSprout-0.9.0.zip`
+- Font version: `0.9.1` (`head.fontRevision == 0.901`)
+- Package name: `SNUSprout-0.9.1.zip`
 
 The package name is derived from the `VERSION` constant in
 `build_snu_sprout.py`, which is the single source of truth for the font version.
@@ -257,8 +257,8 @@ asset.
 Create and push a release tag:
 
 ```sh
-git tag v0.9.0
-git push origin v0.9.0
+git tag v0.9.1
+git push origin v0.9.1
 ```
 
 Reusing an existing release tag is intentionally treated as an error. Use a new
@@ -283,10 +283,13 @@ version tag for each published package.
 ## Reproducibility Notes
 
 - The builder rewrites family/style naming to use `SNU Sprout` instead of
-  the reserved upstream family name.
+  the upstream family name as its primary font name. The LINE Seed OFL header
+  does not declare a Reserved Font Name.
 - Output fonts preserve the upstream `OS/2.fsSelection` `USE_TYPO_METRICS`
   behavior so the large fallback `hhea` box does not shift text in layouts
   that center font line boxes.
+- Output fonts set `OS/2.fsType` to `0` so inherited embedding restrictions do
+  not contradict the OFL.
 - Missing source OTFs are fetched automatically from the upstream LINE Seed KR
   and EN ZIPs unless `--no-download` is used. ExtraBold and Black builds need
   the EN sources; builds that select neither do not.

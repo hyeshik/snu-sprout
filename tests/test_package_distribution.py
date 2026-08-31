@@ -17,6 +17,17 @@ def load_packager():
 
 
 class PackageDistributionTests(unittest.TestCase):
+    def test_license_headers_preserve_actual_upstream_rfn_status(self):
+        project_license = (ROOT / "LICENSE").read_text()
+        upstream_license = (ROOT / "licenses" / "LINESeed.txt").read_text()
+        project_header = project_license.split("This Font Software", 1)[0]
+        upstream_header = upstream_license.split("This Font Software", 1)[0]
+
+        self.assertIn("Hyeshik Chang (modifications)", project_header)
+        self.assertIn("LY Corporation", project_header)
+        self.assertIn("LY Corporation", upstream_header)
+        self.assertNotIn("Reserved Font Name", upstream_header)
+
     def test_distribution_contains_only_flat_fonts_and_licenses(self):
         packager = load_packager()
 

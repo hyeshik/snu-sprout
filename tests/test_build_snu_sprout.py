@@ -1,6 +1,7 @@
 import importlib.util
 import pathlib
 import tempfile
+import types
 import unittest
 import zipfile
 
@@ -252,7 +253,7 @@ class BuildSnuSproutTests(unittest.TestCase):
     def test_head_revision_distinguishes_patch_releases(self):
         builder = load_builder()
 
-        self.assertEqual(builder.VERSION, "0.9.0")
+        self.assertEqual(builder.VERSION, "0.9.1")
         # FontForge reads only major.minor from font.version, so it writes the
         # same head.fontRevision for 0.3.0 and 0.3.1. The builder stamps the
         # revision itself so a patch release is not mistaken for its
@@ -268,6 +269,23 @@ class BuildSnuSproutTests(unittest.TestCase):
         for ambiguous in ("0.10.0", "0.3.100", "0"):
             with self.assertRaises(ValueError):
                 builder.font_revision(ambiguous)
+
+    def test_metadata_preserves_copyright_and_ofl_without_inventing_an_rfn(self):
+        builder = load_builder()
+        font = types.SimpleNamespace(os2_panose=(0,) * 10)
+        spec = next(spec for spec in builder.STYLE_SPECS if spec.style == "Regular")
+
+        builder.rewrite_metadata(font, spec, italic=False, italic_angle=0)
+        names = {field: value for _, field, value in font.sfnt_names}
+
+        self.assertEqual(font.copyright, builder.COPYRIGHT_TEXT)
+        self.assertIn("LY Corporation", names["Copyright"])
+        self.assertIn("Hyeshik Chang (modifications)", names["Copyright"])
+        self.assertEqual(names["License"], "SIL Open Font License, Version 1.1")
+        self.assertEqual(names["License URL"], "https://openfontlicense.org")
+        self.assertEqual(font.os2_fstype, 0)
+        self.assertNotIn("Reserved Font Name", names["Trademark"])
+        self.assertIn("upstream family name", names["Trademark"])
 
     def test_parser_exposes_italic_guard_controls(self):
         builder = load_builder()

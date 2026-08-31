@@ -14,7 +14,12 @@ from typing import Iterable, Iterator, NamedTuple
 FAMILY_NAME = "SNU Sprout"
 POSTSCRIPT_FAMILY_NAME = "SNUSprout"
 FILE_FAMILY_NAME = POSTSCRIPT_FAMILY_NAME
-VERSION = "0.9.0"
+VERSION = "0.9.1"
+UPSTREAM_COPYRIGHT = "Copyright (c) LY Corporation."
+DERIVATIVE_COPYRIGHT = "Copyright (c) 2026 Hyeshik Chang (modifications)."
+COPYRIGHT_TEXT = f"{UPSTREAM_COPYRIGHT} {DERIVATIVE_COPYRIGHT}"
+LICENSE_DESCRIPTION = "SIL Open Font License, Version 1.1"
+LICENSE_URL = "https://openfontlicense.org"
 DEFAULT_SOURCE_ZIP_URL = "https://seed.line.me/src/images/fonts/LINE_Seed_Sans_KR.zip"
 DEFAULT_EN_SOURCE_ZIP_URL = "https://seed.line.me/src/images/fonts/LINE_Seed_Sans_EN.zip"
 DEFAULT_DOWNLOAD_DIR = "vendor/downloads"
@@ -176,7 +181,9 @@ def finalize_font_metadata(output_path: Path) -> float:
     temporary_path = output_path.with_suffix(output_path.suffix + ".rev-tmp")
     try:
         font["head"].fontRevision = revision
-        font["OS/2"].version = max(font["OS/2"].version, 4)
+        os2_table = font["OS/2"]
+        os2_table.version = max(os2_table.version, 4)
+        os2_table.fsType = 0
         font.save(str(temporary_path))
     finally:
         font.close()
@@ -1348,12 +1355,11 @@ def rewrite_metadata(font, spec: StyleSpec, italic: bool, italic_angle: float) -
     font.fontname = ps_name
     font.weight = "Normal" if spec.style == "Regular" else spec.style
     font.version = VERSION
-    font.copyright = (
-        "Copyright (c) LY Corporation. SNU Sprout is a derivative build."
-    )
+    font.copyright = COPYRIGHT_TEXT
     font.italicangle = italic_angle
     font.os2_weight = spec.weight
     font.os2_width = 5
+    font.os2_fstype = 0
     font.os2_vendor = "SNUS"
     font.os2_stylemap = os2_stylemap(spec, italic)
     panose = list(font.os2_panose)
@@ -1362,13 +1368,13 @@ def rewrite_metadata(font, spec: StyleSpec, italic: bool, italic_angle: float) -
 
     notice = (
         "SNU Sprout is a derivative of LINE Seed Sans KR and LINE Seed Sans "
-        "and does not use the reserved upstream family name."
+        "and does not use the upstream family name as its primary font name."
     )
     font.sfnt_names = (
         (
             "English (US)",
             "Copyright",
-            "Copyright (c) LY Corporation. SNU Sprout is a derivative build.",
+            COPYRIGHT_TEXT,
         ),
         ("English (US)", "Family", FAMILY_NAME),
         ("English (US)", "SubFamily", output_style),
@@ -1385,6 +1391,8 @@ def rewrite_metadata(font, spec: StyleSpec, italic: bool, italic_angle: float) -
         ("English (US)", "Preferred Family", FAMILY_NAME),
         ("English (US)", "Preferred Styles", output_style),
         ("English (US)", "Compatible Full", full_name),
+        ("English (US)", "License", LICENSE_DESCRIPTION),
+        ("English (US)", "License URL", LICENSE_URL),
     )
 
 
