@@ -14,7 +14,7 @@ from typing import Iterable, Iterator, NamedTuple
 FAMILY_NAME = "SNU Sprout"
 POSTSCRIPT_FAMILY_NAME = "SNUSprout"
 FILE_FAMILY_NAME = POSTSCRIPT_FAMILY_NAME
-VERSION = "0.9.1"
+VERSION = "0.9.2"
 UPSTREAM_COPYRIGHT = "Copyright (c) LY Corporation."
 DERIVATIVE_COPYRIGHT = "Copyright (c) 2026 Hyeshik Chang (modifications)."
 COPYRIGHT_TEXT = f"{UPSTREAM_COPYRIGHT} {DERIVATIVE_COPYRIGHT}"

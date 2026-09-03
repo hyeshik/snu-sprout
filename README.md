@@ -135,8 +135,8 @@ Default build settings:
 - Typographic line metrics: preserve LINE Seed Sans KR's `USE_TYPO_METRICS` flag
 - PANOSE weight: `No Fit`; the upstream KR masters all report the same PANOSE
   weight, so the authoritative per-style classification is `OS/2.usWeightClass`
-- Font version: `0.9.1` (`head.fontRevision == 0.901`)
-- Package name: `SNUSprout-0.9.1.zip`
+- Font version: `0.9.2` (`head.fontRevision == 0.902`)
+- Package name: `SNUSprout-0.9.2.zip`
 
 The package name is derived from the `VERSION` constant in
 `build_snu_sprout.py`, which is the single source of truth for the font version.
@@ -261,8 +261,8 @@ asset.
 Create and push a release tag:
 
 ```sh
-git tag v0.9.1
-git push origin v0.9.1
+git tag v0.9.2
+git push origin v0.9.2
 ```
 
 Reusing an existing release tag is intentionally treated as an error. Use a new
