@@ -77,6 +77,21 @@ class BuildSnuSproutTests(unittest.TestCase):
         )
         self.assertEqual(builder.DEFAULT_OUTPUT_DIR, "instance_otf")
 
+    def test_hangul_geometry_matches_selected_appendard_blend(self):
+        builder = load_builder()
+
+        self.assertAlmostEqual(builder.HANGUL_X_SCALE, 0.9859268194611982)
+        self.assertAlmostEqual(builder.HANGUL_Y_SCALE, 0.9954128440366973)
+        self.assertAlmostEqual(builder.HANGUL_X_SHIFT, 1.2436670687575373)
+        self.assertAlmostEqual(builder.HANGUL_Y_SHIFT, 3.166552711981929)
+        self.assertAlmostEqual(builder.HANGUL_ADVANCE_SCALE, 0.9928274820687052)
+        for codepoint in (0x1100, 0x3131, 0xA960, 0xAC00, 0xD7A3, 0xD7B0):
+            with self.subTest(codepoint=codepoint):
+                self.assertTrue(builder.is_hangul_codepoint(codepoint))
+        for codepoint in (0x0041, 0x3001, 0x4E00, 0xD7A4):
+            with self.subTest(codepoint=codepoint):
+                self.assertFalse(builder.is_hangul_codepoint(codepoint))
+
     def test_style_matrix_keeps_current_sprout_weight_model(self):
         builder = load_builder()
         specs = {spec.style: spec for spec in builder.STYLE_SPECS}

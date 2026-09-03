@@ -113,6 +113,10 @@ Native EN Heavy is intentionally not substituted because it is darker still.
 
 Default build settings:
 
+- Hangul geometry: `0.985927` horizontal scale, `0.995413` vertical scale,
+  `(+1.244, +3.167)` outline shift, and `0.992827` advance scale. This is the
+  adopted Original:Appendard `2:1` fit; other CJK glyphs retain their source
+  geometry.
 - Italic slant angle for non-CJK glyphs: `10deg`
 - Fallback weight-step reference glyph: `I`
 - Intermediate horizontal metrics and kerning: linear interpolation by source GID

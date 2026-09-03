@@ -43,6 +43,11 @@ EN_SOURCE_FILES = {
 LIGHT_INTERPOLATION_AMOUNT = 0.55
 EXTRABOLD_KR_INTERPOLATION_AMOUNT = 1.288
 BLACK_KR_INTERPOLATION_AMOUNT = 1.576
+HANGUL_X_SCALE = 0.9859268194611982
+HANGUL_Y_SCALE = 0.9954128440366973
+HANGUL_X_SHIFT = 1.2436670687575373
+HANGUL_Y_SHIFT = 3.166552711981929
+HANGUL_ADVANCE_SCALE = 0.9928274820687052
 
 SOURCE_FILES = {
     "Thin": "LINESeedKR-Th.otf",
@@ -128,6 +133,14 @@ CJK_CODEPOINT_RANGES = (
     (0x2B820, 0x2CEAF),
     (0x2CEB0, 0x2EBEF),
     (0x30000, 0x3134F),
+)
+
+HANGUL_CODEPOINT_RANGES = (
+    (0x1100, 0x11FF),
+    (0x3130, 0x318F),
+    (0xA960, 0xA97F),
+    (0xAC00, 0xD7A3),
+    (0xD7B0, 0xD7FF),
 )
 
 
@@ -636,6 +649,39 @@ def ensure_en_fonts(args: argparse.Namespace) -> dict[str, Path]:
 
 def is_cjk_codepoint(codepoint: int) -> bool:
     return any(start <= codepoint <= end for start, end in CJK_CODEPOINT_RANGES)
+
+
+def is_hangul_codepoint(codepoint: int) -> bool:
+    return any(start <= codepoint <= end for start, end in HANGUL_CODEPOINT_RANGES)
+
+
+def adjust_hangul_geometry(font) -> int:
+    changed = 0
+    for glyph in list(font.glyphs()):
+        if not is_hangul_codepoint(glyph.unicode):
+            continue
+        if glyph.boundingBox() == (0.0, 0.0, 0.0, 0.0):
+            continue
+        original_width = glyph.width
+        if glyph.references:
+            glyph.unlinkRef()
+        glyph.transform(
+            (
+                HANGUL_X_SCALE,
+                0,
+                0,
+                HANGUL_Y_SCALE,
+                HANGUL_X_SHIFT,
+                HANGUL_Y_SHIFT,
+            )
+        )
+        glyph.width = (
+            0
+            if original_width == 0
+            else round(original_width * HANGUL_ADVANCE_SCALE)
+        )
+        changed += 1
+    return changed
 
 
 def should_slant_codepoint(codepoint: int) -> bool:
@@ -1471,6 +1517,7 @@ def build_variant(
                 en_amount,
                 quiet,
             )
+        hangul_adjusted = adjust_hangul_geometry(font)
         slanted, upright = (
             slant_non_cjk_glyphs(font, args.italic_angle) if italic else (0, 0)
         )
@@ -1521,6 +1568,10 @@ def build_variant(
         f"interpolated_kern_pairs={interpolated_pairs}, "
         f"en_grafted_glyphs={grafted_glyphs}, "
         f"en_grafted_kern_pairs={grafted_pairs}, "
+        f"hangul_adjusted={hangul_adjusted}, "
+        f"hangul_transform=({HANGUL_X_SCALE:.6f},{HANGUL_Y_SCALE:.6f},"
+        f"{HANGUL_X_SHIFT:.3f},{HANGUL_Y_SHIFT:.3f},"
+        f"{HANGUL_ADVANCE_SCALE:.6f}), "
         f"italic_slanted={slanted}, italic_upright={upright}, "
         f"cid_flattened={flattened}, glyphs_renamed={renamed}, "
         f"head_revision={revision}, italic_guard={guard_summary}, "
