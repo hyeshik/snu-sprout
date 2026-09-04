@@ -1,5 +1,7 @@
 # SNU Sprout
 
+Explore the complete SNU typeface collection on the [QBio Fonts website](https://qbio.io/share/fonts/).
+
 SNU Sprout is an OpenType build derived from LINE Seed Sans KR and LINE Seed
 Sans. The build script downloads both source packages when needed, loads the
 three Korean OTF masters with FontForge, interpolates the complete weight
