@@ -27,6 +27,7 @@ test:
 	$(PYTHON) -m unittest discover -s tests
 
 distribution: build
+	$(PYTHON) -m unittest discover -s tests -p test_cff_print_coordinates.py
 	$(PYTHON) scripts/package_distribution.py \
 		--input-dir "$(OUTPUT_DIR)" \
 		--output "$(PACKAGE_ZIP)"

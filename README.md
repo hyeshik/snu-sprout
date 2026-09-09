@@ -16,6 +16,16 @@ bearings, and kerning are interpolated at the explicitly calibrated position.
 Compatible outlines are interpolated point for point; incompatible outlines
 use a master-bounded fallback fitted to the same size and weight progression.
 
+## Printing compatibility
+
+Final OTF export uses FontForge's `round` flag to write integer CFF outline
+and hint operands after all geometry transformations. Fractional operands
+correlate with missing or distorted text reported from Pages on macOS Tahoe
+to an HP Color LaserJet Pro M281fdw. Integer export avoids that representation;
+confirmation on that physical printer is still required. Advance widths and
+the design transforms remain as specified. Built-font regression tests scan
+every glyph for fractional coordinates.
+
 ## Requirements
 
 - FontForge with Python scripting support
@@ -137,8 +147,8 @@ Default build settings:
 - Typographic line metrics: preserve LINE Seed Sans KR's `USE_TYPO_METRICS` flag
 - PANOSE weight: `No Fit`; the upstream KR masters all report the same PANOSE
   weight, so the authoritative per-style classification is `OS/2.usWeightClass`
-- Font version: `0.9.2` (`head.fontRevision == 0.902`)
-- Package name: `SNUSprout-0.9.2.zip`
+- Font version: `0.9.3` (`head.fontRevision == 0.903`)
+- Package name: `SNUSprout-0.9.3.zip`
 
 The package name is derived from the `VERSION` constant in
 `build_snu_sprout.py`, which is the single source of truth for the font version.
@@ -263,8 +273,8 @@ asset.
 Create and push a release tag:
 
 ```sh
-git tag v0.9.2
-git push origin v0.9.2
+git tag v0.9.3
+git push origin v0.9.3
 ```
 
 Reusing an existing release tag is intentionally treated as an error. Use a new

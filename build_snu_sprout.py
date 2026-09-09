@@ -14,7 +14,7 @@ from typing import Iterable, Iterator, NamedTuple
 FAMILY_NAME = "SNU Sprout"
 POSTSCRIPT_FAMILY_NAME = "SNUSprout"
 FILE_FAMILY_NAME = POSTSCRIPT_FAMILY_NAME
-VERSION = "0.9.2"
+VERSION = "0.9.3"
 UPSTREAM_COPYRIGHT = "Copyright (c) LY Corporation."
 DERIVATIVE_COPYRIGHT = "Copyright (c) 2026 Hyeshik Chang (modifications)."
 COPYRIGHT_TEXT = f"{UPSTREAM_COPYRIGHT} {DERIVATIVE_COPYRIGHT}"
@@ -1528,7 +1528,8 @@ def build_variant(
         with suppress_c_stderr(quiet):
             validation_state = font.validate()
         with suppress_c_stderr(quiet):
-            font.generate(str(output_path))
+            # Round after interpolation and slanting for CFF printer compatibility.
+            font.generate(str(output_path), flags=("opentype", "round"))
     finally:
         font.close()
 

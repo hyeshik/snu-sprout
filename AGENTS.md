@@ -64,6 +64,9 @@ Expected behavior:
 - every built weight applies the adopted Original:Appendard `2:1` affine fit
   to encoded Hangul and Hangul Jamo after weight interpolation and before
   italic slanting; other CJK glyphs retain their source geometry
+- final OTF generation must explicitly use `flags=("opentype", "round")` after
+  interpolation, Hangul fitting, and italic slanting, so CFF outline and hint
+  operands use integer coordinates for printer compatibility
 - every italic build then appends a class-based GPOS pair positioning lookup to each `kern` feature so a slanted glyph cannot collide with the following upright CJK glyph; the shear leaves advance widths alone, so without it `f다` overlaps by 82 units. Split the two sides with the builder's own `slants_in_italic`, so the guard cannot drift away from the slanting rule, and keep the rounding conservative (overhangs up, side bearings down)
 - after `cidFlatten`, every glyph is renamed to a registry-neutral name: encoded glyphs take their AGL codepoint name (`uniXXXX` / `uXXXXXX`) and substituted glyphs take the AGL names of their inputs (`uni0066_uni0069` for fi, `uni0021.locl`). Do not reintroduce the `Korea1.<cid>` names FontForge derives from the masters' (mislabeled) Adobe-Korea1 ROS, because macOS Core Text then resolves them through the standard Adobe-Korea1 CMap and shows wrong syllables
 - keep the glyphs only `liga`, `calt`, and `locl` reach. No codepoint maps to the `fi`/`fl`/`ff`/`ffi`/`ffl` ligatures, the contextual `j` alternates, or the localized punctuation, and deleting them makes FontForge drop the lookups that produce them, which is how the Latin ligatures were lost between 0.1.2 and 0.4.0. Weighting and slanting read the codepoints back out of the names, so a substituted glyph follows the glyphs it is substituted from
