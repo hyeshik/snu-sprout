@@ -16,6 +16,30 @@ bearings, and kerning are interpolated at the explicitly calibrated position.
 Compatible outlines are interpolated point for point; incompatible outlines
 use a master-bounded fallback fitted to the same size and weight progression.
 
+## Vertical sizing and alignment
+
+All main SNU Sprout fonts use the adopted macOS system-font fit. Family,
+PostScript, and file names retain `SNU Sprout` / `SNUSprout` without a
+`Mac` suffix. The final stage runs once after the existing design transforms,
+metadata, and italic collision guard. It applies these additional transforms
+at UPM 1000; positive Y moves ink upward:
+
+| Glyph group | Uniform X/Y scale | Y shift |
+|---|---:|---:|
+| Hangul and Jamo, including their GSUB alternates | 1.000000000 | +13.500000000 |
+| Latin and all remaining glyphs | 0.986328686 | -0.000000000 |
+
+Both axes use the same factor, preserving the approved glyph aspect ratios.
+Advances, kerning, mark anchors, and hint zones follow the corresponding scale.
+The final `hhea` and `OS/2` typo metrics are **952 / −241 / 0**
+(ascender / descender / line gap), with `USE_TYPO_METRICS` enabled. Windows
+clipping bounds include all ink; cap/x-height metadata follows the transformed
+outlines. Horizontal `BASE` entries use the Roman baseline at zero. Cmap,
+GSUB substitutions, style linking, and the existing release version are kept.
+
+The final fit is embedded in `build_snu_sprout.py`; it needs no additional
+helper script or study files.
+
 ## Printing compatibility
 
 Final OTF export uses FontForge's `round` flag to write integer CFF outline
@@ -123,7 +147,7 @@ Native EN Heavy is intentionally not substituted because it is darker still.
 
 ## Build Details
 
-Default build settings:
+Design settings before the final uniform fit described above:
 
 - Hangul geometry: `0.985927` horizontal scale, `0.995413` vertical scale,
   `(+1.244, +3.167)` outline shift, and `0.992827` advance scale. This is the
@@ -144,7 +168,7 @@ Default build settings:
   and master-bounded ink weight
 - Italic collision guard ink clearance: `30` units at UPM 1000
 - Italic collision guard geometry bucket: `5` units
-- Typographic line metrics: preserve LINE Seed Sans KR's `USE_TYPO_METRICS` flag
+- Final typographic line metrics: `952 / -241 / 0`, with `USE_TYPO_METRICS` set
 - PANOSE weight: `No Fit`; the upstream KR masters all report the same PANOSE
   weight, so the authoritative per-style classification is `OS/2.usWeightClass`
 - Font version: `0.9.3` (`head.fontRevision == 0.903`)
@@ -190,7 +214,7 @@ glyph can lean past its own advance and overlap the upright CJK glyph that
 follows. In `f다` the italic `f` overhangs its advance by 160 units while `다`
 offers only 78 units of left side bearing, leaving an 82 unit overlap.
 
-Every italic build therefore appends a class-based GPOS pair positioning lookup
+Before the final uniform fit, every italic build appends a class-based GPOS pair positioning lookup
 to each `kern` feature. It buckets slanted glyphs by right overhang and upright
 CJK glyphs by left side bearing, then adds a positive `XAdvance` to the slanted
 glyph so the pair keeps at least the configured ink clearance. Both roundings

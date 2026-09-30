@@ -64,6 +64,13 @@ Expected behavior:
 - every built weight applies the adopted Original:Appendard `2:1` affine fit
   to encoded Hangul and Hangul Jamo after weight interpolation and before
   italic slanting; other CJK glyphs retain their source geometry
+- after metadata, interpolated kerning, and the italic guard, apply the embedded
+  final uniform fit once: Hangul/Jamo and their GSUB outputs use scale `1.0`
+  and Y shift `+13.5`; all remaining glyphs use scale `0.9863286857899631`
+  on both axes and zero Y shift. Preserve glyph aspect ratios, cmap, GSUB,
+  family names, and the existing version. Keep `hhea` and OS/2 typo metrics at
+  `952 / -241 / 0`, enable `USE_TYPO_METRICS`, and include CFF ink in Windows
+  clipping bounds. Scale advances, layout, anchors, and hint zones with outlines.
 - final OTF generation must explicitly use `flags=("opentype", "round")` after
   interpolation, Hangul fitting, and italic slanting, so CFF outline and hint
   operands use integer coordinates for printer compatibility
@@ -115,12 +122,13 @@ After changing the build logic, at minimum:
 4. Confirm the expected `OS/2.usWeightClass` is written
 5. Confirm `OS/2.fsSelection` keeps bit 7 (`USE_TYPO_METRICS`) set
 6. Confirm `liga`, `calt`, `locl`, and `frac` all survive into the output, and that shaping `fi fl ff ffi ffl` returns five ligature glyphs
-7. Confirm ExtraBold's shared non-CJK outlines, horizontal metrics, and
-   EN-to-EN kerning match the native LINE Seed EN ExtraBold source
+7. Confirm ExtraBold's shared non-CJK design uses the halfway EN Bold-to-ExtraBold
+   interpolation and Black uses native EN ExtraBold, with the final uniform
+   fit applied to outlines, horizontal metrics, and EN-to-EN kerning
 
 If italic layout changed, also build one italic and confirm with a real shaper
 that `f다` has a non-negative ink gap while a non-colliding pair such as `h다`
-keeps the spacing it had before.
+keeps its designed spacing scaled by the final Latin factor.
 
 The `VERSION` constant in `build_snu_sprout.py` is the single source of truth for
 the font version. The `Makefile` and the CI workflow both derive the
