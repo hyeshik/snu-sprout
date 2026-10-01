@@ -268,7 +268,7 @@ class BuildSnuSproutTests(unittest.TestCase):
     def test_head_revision_distinguishes_patch_releases(self):
         builder = load_builder()
 
-        self.assertEqual(builder.VERSION, "0.9.3")
+        self.assertEqual(builder.VERSION, "0.9.4")
         # FontForge reads only major.minor from font.version, so it writes the
         # same head.fontRevision for 0.3.0 and 0.3.1. The builder stamps the
         # revision itself so a patch release is not mistaken for its

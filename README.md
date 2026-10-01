@@ -35,7 +35,7 @@ The final `hhea` and `OS/2` typo metrics are **952 / −241 / 0**
 (ascender / descender / line gap), with `USE_TYPO_METRICS` enabled. Windows
 clipping bounds include all ink; cap/x-height metadata follows the transformed
 outlines. Horizontal `BASE` entries use the Roman baseline at zero. Cmap,
-GSUB substitutions, style linking, and the existing release version are kept.
+GSUB substitutions and style linking are kept.
 
 The final fit is embedded in `build_snu_sprout.py`; it needs no additional
 helper script or study files.
@@ -171,8 +171,8 @@ Design settings before the final uniform fit described above:
 - Final typographic line metrics: `952 / -241 / 0`, with `USE_TYPO_METRICS` set
 - PANOSE weight: `No Fit`; the upstream KR masters all report the same PANOSE
   weight, so the authoritative per-style classification is `OS/2.usWeightClass`
-- Font version: `0.9.3` (`head.fontRevision == 0.903`)
-- Package name: `SNUSprout-0.9.3.zip`
+- Font version: `0.9.4` (`head.fontRevision == 0.904`)
+- Package name: `SNUSprout-0.9.4.zip`
 
 The package name is derived from the `VERSION` constant in
 `build_snu_sprout.py`, which is the single source of truth for the font version.
@@ -297,8 +297,8 @@ asset.
 Create and push a release tag:
 
 ```sh
-git tag v0.9.3
-git push origin v0.9.3
+git tag v0.9.4
+git push origin v0.9.4
 ```
 
 Reusing an existing release tag is intentionally treated as an error. Use a new
