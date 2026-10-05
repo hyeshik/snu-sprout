@@ -171,8 +171,8 @@ Design settings before the final uniform fit described above:
 - Final typographic line metrics: `952 / -241 / 0`, with `USE_TYPO_METRICS` set
 - PANOSE weight: `No Fit`; the upstream KR masters all report the same PANOSE
   weight, so the authoritative per-style classification is `OS/2.usWeightClass`
-- Font version: `0.9.4` (`head.fontRevision == 0.904`)
-- Package name: `SNUSprout-0.9.4.zip`
+- Font version: `0.9.5` (`head.fontRevision == 0.905`)
+- Package name: `SNUSprout-0.9.5.zip`
 
 The package name is derived from the `VERSION` constant in
 `build_snu_sprout.py`, which is the single source of truth for the font version.
@@ -191,6 +191,17 @@ every glyph to a registry-neutral name right after flattening, which makes every
 renderer honor the font `cmap`. Encoded glyphs take their AGL codepoint name
 (`uniXXXX` / `uXXXXXX`); the rest are named for the glyphs they are substituted
 from, as described below.
+
+### Space glyph normalization
+
+LINE Seed KR maps U+0000 through U+0020 to one blank GID. Consequently the
+general CID-name neutralization above used the first mapping and named the
+space glyph `uni0000`. The final post-processing step keeps its GID and advance
+width, renames it to the conventional `space`, and removes only the U+0000–U+001F
+aliases that point to that same glyph. This makes custom-font converters that
+special-case the PostScript space name behave correctly without changing
+ordinary shaping, while separately encoded controls from any future source
+remain intact.
 
 ### Glyphs only OpenType features reach
 
@@ -297,8 +308,8 @@ asset.
 Create and push a release tag:
 
 ```sh
-git tag v0.9.4
-git push origin v0.9.4
+git tag v0.9.5
+git push origin v0.9.5
 ```
 
 Reusing an existing release tag is intentionally treated as an error. Use a new

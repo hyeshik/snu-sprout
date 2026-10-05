@@ -20,11 +20,13 @@ from fontTools.ttLib import TTFont
 from fontTools.ttLib.scaleUpem import ScalerVisitor
 from fontTools.ttLib.tables import otTables
 
+from normalize_space_glyph import normalize_space_glyph
+
 
 FAMILY_NAME = "SNU Sprout"
 POSTSCRIPT_FAMILY_NAME = "SNUSprout"
 FILE_FAMILY_NAME = POSTSCRIPT_FAMILY_NAME
-VERSION = "0.9.4"
+VERSION = "0.9.5"
 UPSTREAM_COPYRIGHT = "Copyright (c) LY Corporation."
 DERIVATIVE_COPYRIGHT = "Copyright (c) 2026 Hyeshik Chang (modifications)."
 COPYRIGHT_TEXT = f"{UPSTREAM_COPYRIGHT} {DERIVATIVE_COPYRIGHT}"
@@ -1843,6 +1845,9 @@ def build_variant(
         )
 
     apply_vertical_fit(output_path)
+    old_space_name, space_gid, removed_control_aliases = normalize_space_glyph(
+        output_path
+    )
 
     print(
         f"{output_path}: interpolated={interpolation_stats.direct}, "
@@ -1857,6 +1862,8 @@ def build_variant(
         f"{HANGUL_ADVANCE_SCALE:.6f}), "
         f"italic_slanted={slanted}, italic_upright={upright}, "
         f"cid_flattened={flattened}, glyphs_renamed={renamed}, "
+        f"space={old_space_name}->space@{space_gid}, "
+        f"removed_space_control_aliases={removed_control_aliases}, "
         f"head_revision={revision}, italic_guard={guard_summary}, "
         f"validate=0x{validation_state:x}"
     )

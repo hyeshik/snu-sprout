@@ -53,6 +53,14 @@ def load_builder():
     return module
 
 
+def load_space_normalizer():
+    path = ROOT / "normalize_space_glyph.py"
+    spec = importlib.util.spec_from_file_location("normalize_space_glyph", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 class BuildSnuSproutTests(unittest.TestCase):
     def test_family_names_and_source_defaults_match_project_contract(self):
         builder = load_builder()
@@ -268,7 +276,7 @@ class BuildSnuSproutTests(unittest.TestCase):
     def test_head_revision_distinguishes_patch_releases(self):
         builder = load_builder()
 
-        self.assertEqual(builder.VERSION, "0.9.4")
+        self.assertEqual(builder.VERSION, "0.9.5")
         # FontForge reads only major.minor from font.version, so it writes the
         # same head.fontRevision for 0.3.0 and 0.3.1. The builder stamps the
         # revision itself so a patch release is not mistaken for its
@@ -315,6 +323,49 @@ class BuildSnuSproutTests(unittest.TestCase):
         )
         self.assertEqual(args.guard_clearance, 40)
         self.assertTrue(args.no_italic_guard)
+
+    def test_space_is_renamed_without_moving_its_glyph_id(self):
+        normalizer = load_space_normalizer()
+        glyph_order = [".notdef", "uni0000", "uni0021"]
+
+        renamed, old_name, gid = normalizer.renamed_space_glyph_order(
+            glyph_order,
+            {0x00: "uni0000", 0x20: "uni0000"},
+        )
+
+        self.assertEqual(old_name, "uni0000")
+        self.assertEqual(gid, 1)
+        self.assertEqual(renamed, [".notdef", "space", "uni0021"])
+        self.assertEqual(glyph_order[1], "uni0000")
+
+    def test_space_rename_is_idempotent_and_rejects_ambiguity(self):
+        normalizer = load_space_normalizer()
+        glyph_order = [".notdef", "space"]
+
+        renamed, old_name, gid = normalizer.renamed_space_glyph_order(
+            glyph_order,
+            {0x20: "space"},
+        )
+
+        self.assertEqual((renamed, old_name, gid), (glyph_order, "space", 1))
+        self.assertIsNot(renamed, glyph_order)
+        with self.assertRaisesRegex(ValueError, "does not map U\\+0020"):
+            normalizer.renamed_space_glyph_order([".notdef"], {})
+        with self.assertRaisesRegex(ValueError, "another glyph named 'space'"):
+            normalizer.renamed_space_glyph_order(
+                [".notdef", "uni0000", "space"],
+                {0x20: "uni0000"},
+            )
+
+    def test_space_normalization_runs_after_final_geometry_processing(self):
+        builder = load_builder()
+        source = pathlib.Path(builder.__file__).read_text()
+
+        fit = source.index("apply_vertical_fit(output_path)")
+        normalize = source.index("normalize_space_glyph(\n        output_path")
+        report = source.index('f"space={old_space_name}->space@{space_gid}')
+        self.assertLess(fit, normalize)
+        self.assertLess(normalize, report)
 
     def test_cid_glyphs_get_registry_neutral_agl_names(self):
         builder = load_builder()
